@@ -99,6 +99,7 @@ export default function App() {
               dailyTotals={dailyTotals}
               getExpensesForDate={store.getExpensesForDate}
               onDeleteExpense={store.deleteExpense}
+              onUpdateExpense={store.updateExpense}
             />
           )}
         </div>

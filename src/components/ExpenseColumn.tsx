@@ -250,7 +250,7 @@ export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense,
   );
 }
 
-function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; onDelete: (id: number) => void; onUpdate: (id: number, updates: Partial<Expense>) => void }) {
+export function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; onDelete: (id: number) => void; onUpdate: (id: number, updates: Partial<Expense>) => void }) {
   const color = CATEGORY_COLORS[expense.category] || "#A1A1AA";
   const [hovered, setHovered] = useState(false);
   const [editing, setEditing] = useState(false);
