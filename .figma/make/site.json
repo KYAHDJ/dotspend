@@ -1,0 +1,10 @@
+{
+  "description": "Effortlessly track and manage expenses with a modern, AI-powered financial assistant that provides insights, budgeting tools, and personalized alerts.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
