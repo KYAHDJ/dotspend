@@ -32,6 +32,7 @@ export default function App() {
   if (store.loading) return <LoadingScreen />;
 
   const handleProfileSelect = (id: string) => {
+    if (!id || !store.state.profiles.some((p) => p.id === id)) return;
     store.setActiveProfile(id);
     setView("dashboard");
   };
@@ -39,9 +40,16 @@ export default function App() {
   const todayExpenses = store.getExpensesForDate(store.today);
   const dailyTotals = store.getDailyTotals();
 
+  // Defensive fallback: if a dashboard render is requested but no profile is
+  // available, fall back to the profile (switcher) view instead of a blank screen.
+  const effectiveProfile =
+    store.activeProfile || store.state.profiles[0] || null;
+  const effectiveView =
+    view === "dashboard" && !effectiveProfile ? "profile" : view;
+
   return (
     <div style={{ height: "100%", overflow: "hidden" }}>
-      {view === "profile" ? (
+      {effectiveView === "profile" ? (
         <div style={{ height: "100%", overflowY: "auto" }}>
           <ProfileSwitcher
             profiles={store.state.profiles}
@@ -57,7 +65,7 @@ export default function App() {
       ) : (
         <div style={{ height: "100%", overflow: "hidden" }}>
           <Dashboard
-            profile={store.activeProfile}
+            profile={effectiveProfile as NonNullable<typeof effectiveProfile>}
             currency={store.state.currency}
             expenses={todayExpenses}
             allExpenses={store.state.expenses}
@@ -79,12 +87,12 @@ export default function App() {
             getExpensesForDate={store.getExpensesForDate}
             today={store.today}
           />
-          {showCalendar && (
+          {showCalendar && effectiveProfile && (
             <CalendarView
               onClose={() => setShowCalendar(false)}
               expenses={store.state.expenses}
               activeProfileId={store.state.activeProfileId}
-              dailyBudget={store.activeProfile.dailyBudgetLimit}
+              dailyBudget={effectiveProfile.dailyBudgetLimit}
               dailyTotals={dailyTotals}
               getExpensesForDate={store.getExpensesForDate}
               onDeleteExpense={store.deleteExpense}

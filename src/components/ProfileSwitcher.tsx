@@ -46,10 +46,10 @@ export default function ProfileSwitcher({
   const [deleteProfile, setDeleteProfile] = useState<Profile | null>(null);
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [deleteError, setDeleteError] = useState("");
-
   const handleAdd = () => {
     if (!newName.trim()) return;
-    const id = onAddProfile(newName.trim(), selectedColor, newPassword || undefined);
+    const id = onAddProfile(newName.trim().slice(0, 24), selectedColor, newPassword || undefined);
+    if (!id) return;
     setNewName("");
     setNewPassword("");
     setShowAdd(false);

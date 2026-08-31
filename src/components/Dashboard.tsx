@@ -43,6 +43,33 @@ export default function Dashboard({
 }: Props) {
   const [mobileTab, setMobileTab] = useState<"overview" | "log" | "ai" | "history">("overview");
 
+  // Defensive fallback: never render with a missing profile.
+  if (!profile) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center gap-3"
+        style={{ height: "100%", background: "#0F0F12", color: "#A1A1AA", fontFamily: "'Inter', sans-serif" }}
+      >
+        <p className="text-sm">No profile selected. Go back to the profile picker.</p>
+        <button
+          onClick={onSwitchProfile}
+          style={{
+            padding: "8px 16px",
+            borderRadius: 10,
+            border: "none",
+            background: "#612AD5",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          Choose profile
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       className="flex flex-col bg-[#0F0F12]"
