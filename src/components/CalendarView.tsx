@@ -9,6 +9,7 @@ interface Props {
   dailyBudget: number;
   dailyTotals: Record<string, { total: number; status: "under" | "near" | "over" }>;
   getExpensesForDate: (date: string) => Expense[];
+  onDeleteExpense: (id: number) => void;
 }
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -32,6 +33,7 @@ export default function CalendarView({
   dailyBudget,
   dailyTotals,
   getExpensesForDate,
+  onDeleteExpense,
 }: Props) {
   const now = new Date();
   const currentMonth = now.getMonth();
@@ -242,10 +244,23 @@ export default function CalendarView({
             {selectedExpenses.length > 0 ? (
               <div className="space-y-2">
                 {selectedExpenses.map((expense) => (
-                  <div key={expense.id} className="p-3 rounded-xl" style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}>
+                  <div key={expense.id} className="p-3 rounded-xl group" style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm text-white font-medium truncate">{expense.label}</span>
-                      <span className="font-mono-data text-sm text-white shrink-0">${expense.amount.toFixed(2)}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-mono-data text-sm text-white">${expense.amount.toFixed(2)}</span>
+                        <button
+                          onClick={() => onDeleteExpense(expense.id)}
+                          className="w-5 h-5 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{ color: "#FF6B6B" }}
+                          title="Delete expense"
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       <span className="text-[10px] text-[#A1A1AA]">{expense.time}</span>

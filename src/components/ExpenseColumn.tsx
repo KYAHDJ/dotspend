@@ -6,10 +6,11 @@ import type { Profile } from "../store";
 interface Props {
   expenses: Expense[];
   onAddExpense: (expense: Expense) => void;
+  onDeleteExpense: (id: number) => void;
   profile: Profile;
 }
 
-export default function ExpenseColumn({ expenses, onAddExpense, profile }: Props) {
+export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense, profile }: Props) {
   const [label, setLabel] = useState("");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("USD");
@@ -235,7 +236,7 @@ export default function ExpenseColumn({ expenses, onAddExpense, profile }: Props
 
         <div className="space-y-1">
           {[...expenses].reverse().map((expense) => (
-            <ExpenseRow key={expense.id} expense={expense} />
+            <ExpenseRow key={expense.id} expense={expense} onDelete={onDeleteExpense} />
           ))}
           {expenses.length === 0 && (
             <div className="text-center py-6 text-[#A1A1AA] text-sm">
@@ -248,13 +249,13 @@ export default function ExpenseColumn({ expenses, onAddExpense, profile }: Props
   );
 }
 
-function ExpenseRow({ expense }: { expense: Expense }) {
+function ExpenseRow({ expense, onDelete }: { expense: Expense; onDelete: (id: number) => void }) {
   const color = CATEGORY_COLORS[expense.category] || "#A1A1AA";
   const [hovered, setHovered] = useState(false);
 
   return (
     <div
-      className="flex items-center gap-3 p-3 rounded-xl transition-all duration-150 cursor-pointer"
+      className="flex items-center gap-3 p-3 rounded-xl transition-all duration-150"
       style={{
         background: hovered ? "#1E1E26" : "transparent",
         border: `1px solid ${hovered ? "#2A2A32" : "transparent"}`,
@@ -283,12 +284,25 @@ function ExpenseRow({ expense }: { expense: Expense }) {
         <span className="font-mono-data text-sm font-semibold text-white">
           {expense.currency === "PHP" ? "₱" : "$"}{expense.amount.toFixed(2)}
         </span>
-        <div
-          className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
-          style={{ background: expense.memberColor }}
-          title={expense.member}
-        >
-          {expense.memberInitial}
+        <div className="flex items-center gap-1.5">
+          <div
+            className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+            style={{ background: expense.memberColor }}
+            title={expense.member}
+          >
+            {expense.memberInitial}
+          </div>
+          <button
+            onClick={() => onDelete(expense.id)}
+            className="w-5 h-5 rounded-md flex items-center justify-center transition-colors"
+            style={{ color: hovered ? "#FF6B6B" : "transparent" }}
+            title="Delete expense"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ interface Props {
   allExpenses: Expense[];
   messages: ChatMessage[];
   onAddExpense: (expense: Expense) => void;
+  onDeleteExpense: (id: number) => void;
   onAddMessage: (msg: ChatMessage) => void;
   onCurrencyToggle: () => void;
   onOpenCalendar: () => void;
@@ -30,6 +31,7 @@ export default function Dashboard({
   allExpenses,
   messages,
   onAddExpense,
+  onDeleteExpense,
   onAddMessage,
   onCurrencyToggle,
   onOpenCalendar,
@@ -73,6 +75,7 @@ export default function Dashboard({
             <ExpenseColumn
               expenses={expenses}
               onAddExpense={onAddExpense}
+              onDeleteExpense={onDeleteExpense}
               profile={profile}
             />
           </div>
@@ -106,6 +109,7 @@ export default function Dashboard({
             <ExpenseColumn
               expenses={expenses}
               onAddExpense={onAddExpense}
+              onDeleteExpense={onDeleteExpense}
               profile={profile}
             />
           </div>
@@ -128,12 +132,25 @@ export default function Dashboard({
               <h3 className="text-white font-semibold text-sm mb-4">Expense History</h3>
               <div className="space-y-2">
                 {[...allExpenses].reverse().map((e) => (
-                  <div key={e.id} className="flex items-center justify-between p-3 rounded-xl" style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}>
-                    <div>
-                      <div className="text-sm text-white font-medium">{e.label}</div>
+                  <div key={e.id} className="flex items-center justify-between p-3 rounded-xl group" style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}>
+                    <div className="min-w-0">
+                      <div className="text-sm text-white font-medium truncate">{e.label}</div>
                       <div className="text-[11px] text-[#A1A1AA]">{e.date} · {e.time}</div>
                     </div>
-                    <span className="font-mono-data text-sm font-semibold text-white">${e.amount.toFixed(2)}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-mono-data text-sm font-semibold text-white">${e.amount.toFixed(2)}</span>
+                      <button
+                        onClick={() => onDeleteExpense(e.id)}
+                        className="w-5 h-5 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ color: "#FF6B6B" }}
+                        title="Delete expense"
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

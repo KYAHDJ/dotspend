@@ -64,6 +64,7 @@ export default function App() {
                 m.date === store.today
             )}
             onAddExpense={store.addExpense}
+            onDeleteExpense={store.deleteExpense}
             onAddMessage={store.addMessage}
             onCurrencyToggle={() =>
               store.setCurrency(store.state.currency === "USD" ? "PHP" : "USD")
@@ -83,6 +84,7 @@ export default function App() {
               dailyBudget={store.activeProfile.dailyBudgetLimit}
               dailyTotals={dailyTotals}
               getExpensesForDate={store.getExpensesForDate}
+              onDeleteExpense={store.deleteExpense}
             />
           )}
         </div>
