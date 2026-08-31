@@ -257,12 +257,16 @@ function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; onDelet
   const [label, setLabel] = useState(expense.label);
   const [amount, setAmount] = useState(String(expense.amount));
   const [category, setCategory] = useState(expense.category);
+  const [location, setLocation] = useState(expense.location);
+  const [currency, setCurrency] = useState(expense.currency);
   const [member, setMember] = useState(expense.member);
 
   const startEdit = () => {
     setLabel(expense.label);
     setAmount(String(expense.amount));
     setCategory(expense.category);
+    setLocation(expense.location);
+    setCurrency(expense.currency);
     setMember(expense.member);
     setEditing(true);
   };
@@ -276,10 +280,15 @@ function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; onDelet
     const parsed = parseFloat(amount);
     if (!isNaN(parsed) && parsed > 0) updates.amount = parsed;
     if (category !== expense.category) updates.category = category;
+    const loc = location.trim();
     const memberName = member.trim();
+    updates.location = loc || "Unknown";
+    updates.currency = currency;
     if (memberName && memberName !== expense.member) {
       updates.member = memberName;
       updates.memberInitial = memberName[0].toUpperCase();
+    } else if (memberName === expense.member) {
+      updates.member = memberName;
     }
     onUpdate(expense.id, updates);
     setEditing(false);
@@ -305,6 +314,17 @@ function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; onDelet
             style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
           />
           <select
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            className="w-20 text-sm px-2 py-2 rounded-lg outline-none cursor-pointer text-white"
+            style={{ background: "#0F0F12", border: "1px solid #2A2A32", color: "#CBE353", fontFamily: "'DM Mono', monospace" }}
+          >
+            <option value="USD">USD</option>
+            <option value="PHP">PHP</option>
+            <option value="EUR">EUR</option>
+            <option value="GBP">GBP</option>
+          </select>
+          <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
             className="flex-1 text-sm px-3 py-2 rounded-lg outline-none cursor-pointer text-white"
@@ -317,6 +337,14 @@ function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; onDelet
             ))}
           </select>
         </div>
+        <input
+          type="text"
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          placeholder="Location"
+          className="w-full text-sm px-3 py-2 rounded-lg outline-none text-white"
+          style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
+        />
         <input
           type="text"
           value={member}
