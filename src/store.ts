@@ -313,7 +313,7 @@ export function useStore() {
       d.status = pct >= 1 ? "over" : pct >= 0.8 ? "near" : "under";
     });
     return totals;
-  }, [state.expenses, state.activeProfileId, activeProfile.dailyBudgetLimit]);
+  }, [state.expenses, state.activeProfileId, activeProfile?.dailyBudgetLimit ?? 150]);
 
   const getWeekTotal = useCallback(() => {
     const now = new Date();
