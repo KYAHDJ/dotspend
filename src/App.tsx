@@ -40,8 +40,6 @@ export default function App() {
   const todayExpenses = store.getExpensesForDate(store.today);
   const dailyTotals = store.getDailyTotals();
 
-  // Defensive fallback: if a dashboard render is requested but no profile is
-  // available, fall back to the profile (switcher) view instead of a blank screen.
   const effectiveProfile =
     store.activeProfile || store.state.profiles[0] || null;
   const effectiveView =
@@ -76,12 +74,17 @@ export default function App() {
             )}
             onAddExpense={store.addExpense}
             onDeleteExpense={store.deleteExpense}
+            onUpdateExpense={store.updateExpense}
             onAddMessage={store.addMessage}
             onCurrencyToggle={() =>
               store.setCurrency(store.state.currency === "USD" ? "PHP" : "USD")
             }
             onOpenCalendar={() => setShowCalendar(true)}
             onSwitchProfile={() => setView("profile")}
+            onUpdateBudget={(amount) =>
+              effectiveProfile &&
+              store.updateProfile(effectiveProfile.id, { dailyBudgetLimit: amount })
+            }
             getWeekTotal={store.getWeekTotal}
             getMonthTotal={store.getMonthTotal}
             getExpensesForDate={store.getExpensesForDate}

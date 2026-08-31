@@ -14,10 +14,12 @@ interface Props {
   messages: ChatMessage[];
   onAddExpense: (expense: Expense) => void;
   onDeleteExpense: (id: number) => void;
+  onUpdateExpense: (id: number, updates: Partial<Expense>) => void;
   onAddMessage: (msg: ChatMessage) => void;
   onCurrencyToggle: () => void;
   onOpenCalendar: () => void;
   onSwitchProfile: () => void;
+  onUpdateBudget: (amount: number) => void;
   getWeekTotal: () => number;
   getMonthTotal: () => number;
   getExpensesForDate: (date: string) => Expense[];
@@ -32,10 +34,12 @@ export default function Dashboard({
   messages,
   onAddExpense,
   onDeleteExpense,
+  onUpdateExpense,
   onAddMessage,
   onCurrencyToggle,
   onOpenCalendar,
   onSwitchProfile,
+  onUpdateBudget,
   getWeekTotal,
   getMonthTotal,
   getExpensesForDate,
@@ -43,7 +47,6 @@ export default function Dashboard({
 }: Props) {
   const [mobileTab, setMobileTab] = useState<"overview" | "log" | "ai" | "history">("overview");
 
-  // Defensive fallback: never render with a missing profile.
   if (!profile) {
     return (
       <div
@@ -71,10 +74,7 @@ export default function Dashboard({
   }
 
   return (
-    <div
-      className="flex flex-col bg-[#0F0F12]"
-      style={{ height: "100%" }}
-    >
+    <div className="flex flex-col bg-[#0F0F12]" style={{ height: "100%" }}>
       <NavBar
         profile={profile}
         currency={currency}
@@ -84,18 +84,15 @@ export default function Dashboard({
         today={today}
       />
 
-      {/* Desktop 3-column */}
       <div className="flex-1 min-h-0 p-4 overflow-hidden hidden lg:block">
-        <div
-          className="h-full grid gap-4"
-          style={{ gridTemplateColumns: "35fr 40fr 25fr" }}
-        >
+        <div className="h-full grid gap-4" style={{ gridTemplateColumns: "35fr 40fr 25fr" }}>
           <div className="min-h-0 overflow-y-auto">
             <FinanceColumn
               expenses={expenses}
               dailyBudget={profile.dailyBudgetLimit}
               getWeekTotal={getWeekTotal}
               getMonthTotal={getMonthTotal}
+              onUpdateBudget={onUpdateBudget}
             />
           </div>
           <div className="min-h-0 overflow-y-auto">
@@ -103,6 +100,7 @@ export default function Dashboard({
               expenses={expenses}
               onAddExpense={onAddExpense}
               onDeleteExpense={onDeleteExpense}
+              onUpdateExpense={onUpdateExpense}
               profile={profile}
             />
           </div>
@@ -119,7 +117,6 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* Mobile tabs */}
       <div className="flex-1 min-h-0 overflow-hidden lg:hidden">
         {mobileTab === "overview" && (
           <div className="h-full overflow-y-auto p-4">
@@ -128,6 +125,7 @@ export default function Dashboard({
               dailyBudget={profile.dailyBudgetLimit}
               getWeekTotal={getWeekTotal}
               getMonthTotal={getMonthTotal}
+              onUpdateBudget={onUpdateBudget}
             />
           </div>
         )}
@@ -137,6 +135,7 @@ export default function Dashboard({
               expenses={expenses}
               onAddExpense={onAddExpense}
               onDeleteExpense={onDeleteExpense}
+              onUpdateExpense={onUpdateExpense}
               profile={profile}
             />
           </div>
@@ -162,7 +161,7 @@ export default function Dashboard({
                   <div key={e.id} className="flex items-center justify-between p-3 rounded-xl group" style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}>
                     <div className="min-w-0">
                       <div className="text-sm text-white font-medium truncate">{e.label}</div>
-                      <div className="text-[11px] text-[#A1A1AA]">{e.date} · {e.time}</div>
+                      <div className="text-[11px] text-[#A1A1AA]">{e.date} {e.time}</div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="font-mono-data text-sm font-semibold text-white">${e.amount.toFixed(2)}</span>
@@ -186,7 +185,6 @@ export default function Dashboard({
         )}
       </div>
 
-      {/* Mobile tab bar */}
       <div
         className="lg:hidden shrink-0 flex items-center justify-around px-4 py-3"
         style={{ borderTop: "1px solid #2A2A32", background: "#18181C" }}

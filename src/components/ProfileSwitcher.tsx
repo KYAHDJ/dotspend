@@ -14,6 +14,58 @@ interface Props {
   adminPassword: string;
 }
 
+function ColorPicker({
+  value,
+  onChange,
+  size,
+}: {
+  value: string;
+  onChange: (c: string) => void;
+  size?: "sm" | "md";
+}) {
+  const cell = size === "sm" ? "w-5 h-5" : "w-6 h-6";
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {PROFILE_COLORS.map((c) => (
+        <button
+          key={c}
+          type="button"
+          onClick={() => onChange(c)}
+          className={`${cell} rounded-full transition-all`}
+          style={{
+            background: c,
+            border: value === c ? "2px solid white" : "2px solid transparent",
+            transform: value === c ? "scale(1.15)" : "scale(1)",
+          }}
+        />
+      ))}
+      {/* Custom color picker */}
+      <label
+        className={`${cell} rounded-full flex items-center justify-center cursor-pointer`}
+        style={{
+          background:
+            "conic-gradient(#ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)",
+          border: PROFILE_COLORS.includes(value)
+            ? "2px solid white"
+            : "2px solid #2A2A32",
+          transform: PROFILE_COLORS.includes(value) ? "scale(1)" : "scale(1.15)",
+        }}
+        title="Custom color"
+      >
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="opacity-0 w-0 h-0"
+        />
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5">
+          <path d="M12 2v20M2 12h20" />
+        </svg>
+      </label>
+    </div>
+  );
+}
+
 export default function ProfileSwitcher({
   profiles,
   onSelect,
@@ -41,11 +93,14 @@ export default function ProfileSwitcher({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editBudget, setEditBudget] = useState("150");
+  const [editColor, setEditColor] = useState(PROFILE_COLORS[0]);
+  const [editPassword, setEditPassword] = useState("");
 
   // Delete (admin) state
   const [deleteProfile, setDeleteProfile] = useState<Profile | null>(null);
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [deleteError, setDeleteError] = useState("");
+
   const handleAdd = () => {
     if (!newName.trim()) return;
     const id = onAddProfile(newName.trim().slice(0, 24), selectedColor, newPassword || undefined);
@@ -57,7 +112,9 @@ export default function ProfileSwitcher({
   };
 
   const handleProfileClick = (p: Profile) => {
-    if (isProfileAuthed(p.id)) {
+    // Always require the profile's password when clicking it, even if it was
+    // unlocked earlier in the session.
+    if (!p.password) {
       onSelect(p.id);
       return;
     }
@@ -80,15 +137,24 @@ export default function ProfileSwitcher({
     setEditingId(p.id);
     setEditName(p.name);
     setEditBudget(String(p.dailyBudgetLimit));
+    setEditColor(p.color);
+    setEditPassword(p.password || "");
   };
 
   const saveEdit = () => {
     if (!editingId || !editName.trim()) return;
-    onUpdateProfile(editingId, {
+    const updates: Partial<Profile> = {
       name: editName.trim(),
       initial: editName.trim()[0].toUpperCase(),
       dailyBudgetLimit: parseFloat(editBudget) || 150,
-    });
+      color: editColor,
+    };
+    if (editPassword.trim()) {
+      updates.password = editPassword.trim();
+    } else {
+      updates.password = undefined;
+    }
+    onUpdateProfile(editingId, updates);
     setEditingId(null);
   };
 
@@ -141,8 +207,8 @@ export default function ProfileSwitcher({
           <div key={p.id} className="flex flex-col items-center gap-4">
             {editingId === p.id ? (
               <div
-                className="w-36 p-3 rounded-2xl flex flex-col gap-2"
-                style={{ background: `${p.color}18`, border: `2px solid ${p.color}` }}
+                className="w-52 p-3 rounded-2xl flex flex-col gap-2"
+                style={{ background: `${editColor}18`, border: `2px solid ${editColor}` }}
               >
                 <input
                   type="text"
@@ -160,11 +226,20 @@ export default function ProfileSwitcher({
                   style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
                   placeholder="Daily budget"
                 />
+                <input
+                  type="text"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  className="w-full text-xs px-2 py-1.5 rounded-lg outline-none text-white"
+                  style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
+                  placeholder="Password (leave blank to remove)"
+                />
+                <ColorPicker value={editColor} onChange={setEditColor} size="sm" />
                 <div className="flex gap-1">
                   <button
                     onClick={saveEdit}
                     className="flex-1 text-[10px] py-1 rounded-md font-medium"
-                    style={{ background: p.color, color: "white" }}
+                    style={{ background: editColor, color: "white" }}
                   >
                     Save
                   </button>
@@ -239,7 +314,7 @@ export default function ProfileSwitcher({
         {showAdd ? (
           <div className="flex flex-col items-center gap-4">
             <div
-              className="w-40 p-3 rounded-2xl flex flex-col gap-2"
+              className="w-52 p-3 rounded-2xl flex flex-col gap-2"
               style={{ border: "2px dashed #E9B380" }}
             >
               <input
@@ -261,20 +336,7 @@ export default function ProfileSwitcher({
                 style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
                 placeholder="Password (optional)"
               />
-              <div className="flex gap-1 flex-wrap justify-center">
-                {PROFILE_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setSelectedColor(c)}
-                    className="w-5 h-5 rounded-full transition-all"
-                    style={{
-                      background: c,
-                      border: selectedColor === c ? "2px solid white" : "2px solid transparent",
-                      transform: selectedColor === c ? "scale(1.2)" : "scale(1)",
-                    }}
-                  />
-                ))}
-              </div>
+              <ColorPicker value={selectedColor} onChange={setSelectedColor} />
               <div className="flex gap-1">
                 <button
                   onClick={handleAdd}

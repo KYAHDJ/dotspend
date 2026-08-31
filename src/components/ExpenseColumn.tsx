@@ -7,10 +7,11 @@ interface Props {
   expenses: Expense[];
   onAddExpense: (expense: Expense) => void;
   onDeleteExpense: (id: number) => void;
+  onUpdateExpense: (id: number, updates: Partial<Expense>) => void;
   profile: Profile;
 }
 
-export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense, profile }: Props) {
+export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense, onUpdateExpense, profile }: Props) {
   const [label, setLabel] = useState("");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("USD");
@@ -236,7 +237,7 @@ export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense,
 
         <div className="space-y-1">
           {[...expenses].reverse().map((expense) => (
-            <ExpenseRow key={expense.id} expense={expense} onDelete={onDeleteExpense} />
+            <ExpenseRow key={expense.id} expense={expense} onDelete={onDeleteExpense} onUpdate={onUpdateExpense} />
           ))}
           {expenses.length === 0 && (
             <div className="text-center py-6 text-[#A1A1AA] text-sm">
@@ -249,9 +250,100 @@ export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense,
   );
 }
 
-function ExpenseRow({ expense, onDelete }: { expense: Expense; onDelete: (id: number) => void }) {
+function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; onDelete: (id: number) => void; onUpdate: (id: number, updates: Partial<Expense>) => void }) {
   const color = CATEGORY_COLORS[expense.category] || "#A1A1AA";
   const [hovered, setHovered] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [label, setLabel] = useState(expense.label);
+  const [amount, setAmount] = useState(String(expense.amount));
+  const [category, setCategory] = useState(expense.category);
+  const [member, setMember] = useState(expense.member);
+
+  const startEdit = () => {
+    setLabel(expense.label);
+    setAmount(String(expense.amount));
+    setCategory(expense.category);
+    setMember(expense.member);
+    setEditing(true);
+  };
+
+  const saveEdit = () => {
+    if (!label.trim()) {
+      setEditing(false);
+      return;
+    }
+    const updates: Partial<Expense> = { label: label.trim() };
+    const parsed = parseFloat(amount);
+    if (!isNaN(parsed) && parsed > 0) updates.amount = parsed;
+    if (category !== expense.category) updates.category = category;
+    const memberName = member.trim();
+    if (memberName && memberName !== expense.member) {
+      updates.member = memberName;
+      updates.memberInitial = memberName[0].toUpperCase();
+    }
+    onUpdate(expense.id, updates);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-2.5 p-3 rounded-xl" style={{ background: "#1E1E26", border: "1px solid #612AD5" }}>
+        <input
+          type="text"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          className="w-full text-sm px-3 py-2 rounded-lg outline-none text-white"
+          style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
+          autoFocus
+        />
+        <div className="flex gap-2">
+          <input
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="w-24 text-sm px-3 py-2 rounded-lg outline-none text-white font-mono-data"
+            style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
+          />
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="flex-1 text-sm px-3 py-2 rounded-lg outline-none cursor-pointer text-white"
+            style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
+          >
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c} style={{ background: "#18181C" }}>
+                {CATEGORY_ICONS[c]} {c}
+              </option>
+            ))}
+          </select>
+        </div>
+        <input
+          type="text"
+          value={member}
+          onChange={(e) => setMember(e.target.value)}
+          placeholder="Spent by"
+          className="w-full text-sm px-3 py-2 rounded-lg outline-none text-white"
+          style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
+        />
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={() => setEditing(false)}
+            className="text-xs px-3 py-1.5 rounded-md font-semibold"
+            style={{ background: "#2A2A32", color: "#A1A1AA" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={saveEdit}
+            className="text-xs px-3 py-1.5 rounded-md font-semibold text-white"
+            style={{ background: "#612AD5" }}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -292,6 +384,17 @@ function ExpenseRow({ expense, onDelete }: { expense: Expense; onDelete: (id: nu
           >
             {expense.memberInitial}
           </div>
+          <button
+            onClick={startEdit}
+            className="w-5 h-5 rounded-md flex items-center justify-center transition-colors"
+            style={{ color: hovered ? "#E9B380" : "transparent" }}
+            title="Edit expense"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+          </button>
           <button
             onClick={() => onDelete(expense.id)}
             className="w-5 h-5 rounded-md flex items-center justify-center transition-colors"

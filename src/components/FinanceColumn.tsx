@@ -66,10 +66,28 @@ interface Props {
   dailyBudget: number;
   getWeekTotal: () => number;
   getMonthTotal: () => number;
+  onUpdateBudget?: (amount: number) => void;
 }
 
-export default function FinanceColumn({ expenses, dailyBudget, getWeekTotal, getMonthTotal }: Props) {
+export default function FinanceColumn({ expenses, dailyBudget, getWeekTotal, getMonthTotal, onUpdateBudget }: Props) {
   const [hoveredCat, setHoveredCat] = useState<string | null>(null);
+  const [editingBudget, setEditingBudget] = useState(false);
+  const [budgetDraft, setBudgetDraft] = useState(String(dailyBudget));
+
+  const startBudgetEdit = () => {
+    setBudgetDraft(String(dailyBudget));
+    setEditingBudget(true);
+  };
+
+  const saveBudget = () => {
+    const parsed = parseFloat(budgetDraft);
+    if (!isNaN(parsed) && parsed > 0 && onUpdateBudget) {
+      onUpdateBudget(parsed);
+    } else {
+      setBudgetDraft(String(dailyBudget));
+    }
+    setEditingBudget(false);
+  };
 
   const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
 
@@ -108,14 +126,22 @@ export default function FinanceColumn({ expenses, dailyBudget, getWeekTotal, get
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Daily Budget Card */}
       <div className="p-5 rounded-xl" style={{ background: "#18181C", border: "1px solid #2A2A32" }}>
         <div className="flex items-center justify-between mb-4">
-          <div>
+          <div className="flex items-center gap-2">
             <h3 className="text-white font-semibold text-sm">Daily Budget</h3>
-            <p className="text-[#A1A1AA] text-xs mt-0.5">
-              {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-            </p>
+            {onUpdateBudget && !editingBudget && (
+              <button
+                onClick={startBudgetEdit}
+                className="text-[#A1A1AA] hover:text-white transition-colors"
+                title="Edit budget"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              </button>
+            )}
           </div>
           <span
             className="text-xs px-2 py-1 rounded-full font-medium"
@@ -143,12 +169,39 @@ export default function FinanceColumn({ expenses, dailyBudget, getWeekTotal, get
             </div>
             <div>
               <div className="text-[11px] text-[#A1A1AA] mb-0.5">Limit</div>
-              <div className="font-mono-data text-sm text-white">${dailyBudget.toFixed(0)} / day</div>
+              {editingBudget ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    value={budgetDraft}
+                    onChange={(e) => setBudgetDraft(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && saveBudget()}
+                    autoFocus
+                    className="w-20 text-sm px-2 py-1 rounded-md outline-none font-mono-data text-white"
+                    style={{ background: "#0F0F12", border: "1px solid #612AD5" }}
+                  />
+                  <button
+                    onClick={saveBudget}
+                    className="text-[10px] px-2 py-1 rounded-md font-semibold text-white"
+                    style={{ background: "#612AD5" }}
+                  >
+                    OK
+                  </button>
+                  <button
+                    onClick={() => setEditingBudget(false)}
+                    className="text-[10px] px-2 py-1 rounded-md font-semibold"
+                    style={{ background: "#2A2A32", color: "#A1A1AA" }}
+                  >
+                    x
+                  </button>
+                </div>
+              ) : (
+                <div className="font-mono-data text-sm text-white">${dailyBudget.toFixed(0)} / day</div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Progress bar */}
         <div className="mt-4">
           <div className="flex justify-between text-[11px] text-[#A1A1AA] mb-1.5">
             <span>Budget utilization</span>
@@ -165,7 +218,6 @@ export default function FinanceColumn({ expenses, dailyBudget, getWeekTotal, get
           </div>
         </div>
 
-        {/* Quick stats */}
         <div className="grid grid-cols-3 gap-3 mt-4">
           {[
             { label: "This Week", value: `$${weekTotal.toFixed(0)}` },
@@ -180,7 +232,6 @@ export default function FinanceColumn({ expenses, dailyBudget, getWeekTotal, get
         </div>
       </div>
 
-      {/* Spending Breakdown Donut */}
       <div className="p-5 rounded-xl" style={{ background: "#18181C", border: "1px solid #2A2A32" }}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-white font-semibold text-sm">Spending Breakdown</h3>
