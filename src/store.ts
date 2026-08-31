@@ -301,7 +301,7 @@ export function useStore() {
 
   const getDailyTotals = useCallback(() => {
     const totals: Record<string, { total: number; status: "under" | "near" | "over" }> = {};
-    const budget = activeProfile.dailyBudgetLimit;
+    const budget = activeProfile?.dailyBudgetLimit ?? 150;
     state.expenses
       .filter((e) => e.profileId === state.activeProfileId)
       .forEach((e) => {
