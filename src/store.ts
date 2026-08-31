@@ -70,15 +70,27 @@ export function useStore() {
   const [loading, setLoading] = useState(true);
   const seeded = useRef(false);
 
-  // Load from Firestore on mount
+  // Load from Firestore on mount with timeout
   useEffect(() => {
+    let cancelled = false;
+
+    function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+      return Promise.race([
+        promise,
+        new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+      ]);
+    }
+
     (async () => {
       try {
+        const timeout = 5000;
         const [profiles, expenses, messages] = await Promise.all([
-          loadProfiles(),
-          loadExpenses(),
-          loadMessages(),
+          withTimeout(loadProfiles(), timeout, []),
+          withTimeout(loadExpenses(), timeout, []),
+          withTimeout(loadMessages(), timeout, []),
         ]);
+
+        if (cancelled) return;
 
         if (profiles.length > 0) {
           setState({
@@ -89,28 +101,31 @@ export function useStore() {
             currency: profiles[0].currency || "USD",
           });
         } else if (!seeded.current) {
-          // First run — seed Firestore with defaults
           seeded.current = true;
-          await seedData(
-            DEFAULT_PROFILES,
-            INITIAL_EXPENSES.map((e) => ({ ...e, date: TODAY, profileId: "david" })),
-            INITIAL_MESSAGES.map((m) => ({ ...m, date: TODAY, profileId: "david" }))
-          );
-          const newState: AppState = {
+          const defaults: AppState = {
             profiles: DEFAULT_PROFILES,
             activeProfileId: "david",
             expenses: INITIAL_EXPENSES.map((e) => ({ ...e, date: TODAY, profileId: "david" })),
             messages: INITIAL_MESSAGES.map((m) => ({ ...m, date: TODAY, profileId: "david" })),
             currency: "USD",
           };
-          setState(newState);
-          saveLocal(newState);
+          setState(defaults);
+          saveLocal(defaults);
+          // Fire-and-forget seed — don't block UI
+          withTimeout(
+            seedData(defaults.profiles, defaults.expenses, defaults.messages),
+            3000,
+            undefined
+          ).catch(() => {});
         }
       } catch (err) {
         console.warn("Firestore unavailable, using local data:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
     })();
+
+    return () => { cancelled = true; };
   }, []);
 
   // Persist to both localStorage and Firestore on state change

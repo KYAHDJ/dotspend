@@ -7,53 +7,90 @@ import {
   query,
   orderBy,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, isFirebaseConfigured } from "./firebase";
 import type { Expense, ChatMessage } from "./data";
 import type { Profile } from "./store";
 
-// ── Profiles ──
-
-export async function loadProfiles(): Promise<Profile[]> {
-  const snap = await getDocs(collection(db, "profiles"));
-  return snap.docs.map((d) => d.data() as Profile);
+function guard<T>(fn: () => Promise<T>, fallback: T): () => Promise<T> {
+  return async () => {
+    if (!isFirebaseConfigured || !db) return fallback;
+    try {
+      return await fn();
+    } catch (err) {
+      console.warn("Firestore operation failed:", err);
+      return fallback;
+    }
+  };
 }
 
+// ── Profiles ──
+
+export const loadProfiles = guard<Profile[]>(async () => {
+  const snap = await getDocs(collection(db!, "profiles"));
+  return snap.docs.map((d) => d.data() as Profile);
+}, []);
+
 export async function saveProfile(profile: Profile): Promise<void> {
-  await setDoc(doc(db, "profiles", profile.id), profile);
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    await setDoc(doc(db, "profiles", profile.id), profile);
+  } catch (err) {
+    console.warn("saveProfile failed:", err);
+  }
 }
 
 export async function deleteProfile(id: string): Promise<void> {
-  await deleteDoc(doc(db, "profiles", id));
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    await deleteDoc(doc(db, "profiles", id));
+  } catch (err) {
+    console.warn("deleteProfile failed:", err);
+  }
 }
 
 // ── Expenses ──
 
-export async function loadExpenses(): Promise<Expense[]> {
+export const loadExpenses = guard<Expense[]>(async () => {
   const snap = await getDocs(
-    query(collection(db, "expenses"), orderBy("id", "desc"))
+    query(collection(db!, "expenses"), orderBy("id", "desc"))
   );
   return snap.docs.map((d) => d.data() as Expense);
-}
+}, []);
 
 export async function saveExpense(expense: Expense): Promise<void> {
-  await setDoc(doc(db, "expenses", String(expense.id)), expense);
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    await setDoc(doc(db, "expenses", String(expense.id)), expense);
+  } catch (err) {
+    console.warn("saveExpense failed:", err);
+  }
 }
 
 export async function deleteExpense(id: number): Promise<void> {
-  await deleteDoc(doc(db, "expenses", String(id)));
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    await deleteDoc(doc(db, "expenses", String(id)));
+  } catch (err) {
+    console.warn("deleteExpense failed:", err);
+  }
 }
 
 // ── Messages ──
 
-export async function loadMessages(): Promise<ChatMessage[]> {
+export const loadMessages = guard<ChatMessage[]>(async () => {
   const snap = await getDocs(
-    query(collection(db, "messages"), orderBy("id", "desc"))
+    query(collection(db!, "messages"), orderBy("id", "desc"))
   );
   return snap.docs.map((d) => d.data() as ChatMessage);
-}
+}, []);
 
 export async function saveMessage(msg: ChatMessage): Promise<void> {
-  await setDoc(doc(db, "messages", String(msg.id)), msg);
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    await setDoc(doc(db, "messages", String(msg.id)), msg);
+  } catch (err) {
+    console.warn("saveMessage failed:", err);
+  }
 }
 
 // ── Bulk save (for initial data seeding) ──
@@ -63,8 +100,13 @@ export async function seedData(
   expenses: Expense[],
   messages: ChatMessage[]
 ): Promise<void> {
-  const batch1 = profiles.map((p) => saveProfile(p));
-  const batch2 = expenses.map((e) => saveExpense(e));
-  const batch3 = messages.map((m) => saveMessage(m));
-  await Promise.all([...batch1, ...batch2, ...batch3]);
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    const batch1 = profiles.map((p) => saveProfile(p));
+    const batch2 = expenses.map((e) => saveExpense(e));
+    const batch3 = messages.map((m) => saveMessage(m));
+    await Promise.all([...batch1, ...batch2, ...batch3]);
+  } catch (err) {
+    console.warn("seedData failed:", err);
+  }
 }
