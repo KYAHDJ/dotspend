@@ -11,6 +11,7 @@ import {
   saveMessage,
   clearDB,
 } from "./firestore";
+import { isFirebaseConfigured } from "./firebase";
 
 export interface Profile {
   id: string;
@@ -126,6 +127,13 @@ export function useStore() {
           withTimeout(clearDB(), 6000, undefined).catch(() => {});
         }
 
+        // If Firestore is not configured, keep the localStorage-backed state
+        // instead of replacing it with empty arrays (which would erase data).
+        if (!isFirebaseConfigured) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
+
         const timeout = 5000;
         const [profiles, expenses, messages] = await Promise.all([
           withTimeout(loadProfiles(), timeout, []),
@@ -134,6 +142,23 @@ export function useStore() {
         ]);
 
         if (cancelled) return;
+
+        // Cloud is the source of truth, but never clobber local data with an
+        // empty cloud (e.g. if the cloud write failed or rules blocked it).
+        // If the cloud is empty but we have local data, keep local data and
+        // re-push everything to the cloud so future loads come from Firestore.
+        const hasLocal =
+          state.profiles.length > 0 ||
+          state.expenses.length > 0 ||
+          state.messages.length > 0;
+
+        if (profiles.length === 0 && expenses.length === 0 && hasLocal) {
+          state.profiles.forEach((p) => saveProfile(p).catch(console.warn));
+          state.expenses.forEach((e) => saveExpense(e).catch(console.warn));
+          state.messages.forEach((m) => saveMessage(m).catch(console.warn));
+          if (!cancelled) setLoading(false);
+          return;
+        }
 
         setState({
           profiles,
@@ -204,11 +229,22 @@ export function useStore() {
 
   const setCurrency = useCallback((c: "USD" | "PHP") => {
     setState((s) => {
-      const newState = { ...s, currency: c };
+      // Apply the currency change globally: to the app-wide currency, every
+      // profile, and every expense so the whole UI updates at once.
+      const newState: AppState = {
+        ...s,
+        currency: c,
+        profiles: s.profiles.map((p) => ({ ...p, currency: c })),
+        expenses: s.expenses.map((e) => ({ ...e, currency: c })),
+      };
       saveLocal(newState);
       return newState;
     });
-  }, []);
+    // Persist the updated profile currencies to Firestore.
+    state.profiles.forEach((p) =>
+      saveProfile({ ...p, currency: c }).catch(console.warn)
+    );
+  }, [state.profiles]);
 
   const addExpense = useCallback((expense: Expense) => {
     const full: Expense = { ...expense, date: TODAY, profileId: state.activeProfileId };
@@ -228,6 +264,19 @@ export function useStore() {
     });
     deleteExpenseDB(id).catch(console.warn);
   }, []);
+
+  const updateExpense = useCallback((id: number, updates: Partial<Expense>) => {
+    setState((s) => {
+      const newState = {
+        ...s,
+        expenses: s.expenses.map((e) => (e.id === id ? { ...e, ...updates } : e)),
+      };
+      saveLocal(newState);
+      return newState;
+    });
+    const expense = state.expenses.find((e) => e.id === id);
+    if (expense) saveExpense({ ...expense, ...updates }).catch(console.warn);
+  }, [state.expenses]);
 
   const addMessage = useCallback((msg: ChatMessage) => {
     const full: ChatMessage = { ...msg, date: TODAY, profileId: state.activeProfileId };
@@ -341,6 +390,7 @@ export function useStore() {
     setCurrency,
     addExpense,
     deleteExpense,
+    updateExpense,
     addMessage,
     addProfile,
     updateProfile,
