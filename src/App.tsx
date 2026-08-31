@@ -49,6 +49,9 @@ export default function App() {
             onAddProfile={store.addProfile}
             onDeleteProfile={store.deleteProfile}
             onUpdateProfile={store.updateProfile}
+            verifyProfilePassword={store.verifyProfilePassword}
+            isProfileAuthed={store.isProfileAuthed}
+            adminPassword={store.adminPassword}
           />
         </div>
       ) : (

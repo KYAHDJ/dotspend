@@ -6,9 +6,12 @@ const PROFILE_COLORS = ["#612AD5", "#E9B380", "#CBE353", "#FF6B6B", "#4ECDC4", "
 interface Props {
   profiles: Profile[];
   onSelect: (id: string) => void;
-  onAddProfile: (name: string, color: string) => string;
+  onAddProfile: (name: string, color: string, password?: string) => string;
   onDeleteProfile: (id: string) => void;
   onUpdateProfile: (id: string, updates: Partial<Profile>) => void;
+  verifyProfilePassword: (id: string, password: string) => boolean;
+  isProfileAuthed: (id: string) => boolean;
+  adminPassword: string;
 }
 
 export default function ProfileSwitcher({
@@ -17,21 +20,60 @@ export default function ProfileSwitcher({
   onAddProfile,
   onDeleteProfile,
   onUpdateProfile,
+  verifyProfilePassword,
+  isProfileAuthed,
+  adminPassword,
 }: Props) {
   const [hovered, setHovered] = useState<string | null>(null);
+
+  // Add profile state
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [selectedColor, setSelectedColor] = useState(PROFILE_COLORS[0]);
+
+  // Login gate state
+  const [loginProfile, setLoginProfile] = useState<Profile | null>(null);
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+
+  // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editBudget, setEditBudget] = useState("150");
 
+  // Delete (admin) state
+  const [deleteProfile, setDeleteProfile] = useState<Profile | null>(null);
+  const [adminPasswordInput, setAdminPasswordInput] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+
   const handleAdd = () => {
     if (!newName.trim()) return;
-    const id = onAddProfile(newName.trim(), selectedColor);
+    const id = onAddProfile(newName.trim(), selectedColor, newPassword || undefined);
     setNewName("");
+    setNewPassword("");
     setShowAdd(false);
     onSelect(id);
+  };
+
+  const handleProfileClick = (p: Profile) => {
+    if (isProfileAuthed(p.id)) {
+      onSelect(p.id);
+      return;
+    }
+    setLoginProfile(p);
+    setLoginPassword("");
+    setLoginError("");
+  };
+
+  const handleLogin = () => {
+    if (!loginProfile) return;
+    if (verifyProfilePassword(loginProfile.id, loginPassword)) {
+      onSelect(loginProfile.id);
+      setLoginProfile(null);
+    } else {
+      setLoginError(loginProfile.password ? "Incorrect password" : "Password required");
+    }
   };
 
   const startEdit = (p: Profile) => {
@@ -50,6 +92,17 @@ export default function ProfileSwitcher({
     setEditingId(null);
   };
 
+  const confirmAdminDelete = () => {
+    if (!deleteProfile) return;
+    if (adminPasswordInput === adminPassword) {
+      onDeleteProfile(deleteProfile.id);
+      setDeleteProfile(null);
+      setAdminPasswordInput("");
+    } else {
+      setDeleteError("Incorrect admin password");
+    }
+  };
+
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center gap-10 relative"
@@ -65,11 +118,7 @@ export default function ProfileSwitcher({
           style={{ background: "linear-gradient(135deg, #612AD5, #9B6EFF)" }}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M12 3L4 8v13h5v-7h6v7h5V8L12 3z"
-              fill="white"
-              opacity="0.9"
-            />
+            <path d="M12 3L4 8v13h5v-7h6v7h5V8L12 3z" fill="white" opacity="0.9" />
           </svg>
         </div>
         <span className="text-white text-2xl font-bold tracking-tight">
@@ -79,10 +128,10 @@ export default function ProfileSwitcher({
 
       <div className="text-center">
         <h1 className="text-white text-[2rem] font-bold leading-tight">
-          Who is logging expenses today?
+          {profiles.length === 0 ? "Create your first profile" : "Who is logging expenses today?"}
         </h1>
         <p className="text-[#A1A1AA] text-sm mt-2">
-          Select your profile to continue
+          {profiles.length === 0 ? "Set up a profile to start tracking" : "Select your profile to continue"}
         </p>
       </div>
 
@@ -92,11 +141,8 @@ export default function ProfileSwitcher({
           <div key={p.id} className="flex flex-col items-center gap-4">
             {editingId === p.id ? (
               <div
-                className="w-32 p-3 rounded-2xl flex flex-col gap-2"
-                style={{
-                  background: `${p.color}18`,
-                  border: `2px solid ${p.color}`,
-                }}
+                className="w-36 p-3 rounded-2xl flex flex-col gap-2"
+                style={{ background: `${p.color}18`, border: `2px solid ${p.color}` }}
               >
                 <input
                   type="text"
@@ -133,7 +179,7 @@ export default function ProfileSwitcher({
               </div>
             ) : (
               <button
-                onClick={() => onSelect(p.id)}
+                onClick={() => handleProfileClick(p)}
                 onMouseEnter={() => setHovered(p.id)}
                 onMouseLeave={() => setHovered(null)}
                 className="flex flex-col items-center gap-4 group"
@@ -146,12 +192,9 @@ export default function ProfileSwitcher({
                         ? `linear-gradient(135deg, ${p.color}35, ${p.color}18)`
                         : `linear-gradient(135deg, ${p.color}18, ${p.color}08)`,
                     border:
-                      hovered === p.id
-                        ? `2px solid ${p.color}`
-                        : "2px solid #2A2A32",
+                      hovered === p.id ? `2px solid ${p.color}` : "2px solid #2A2A32",
                     color: p.color,
-                    boxShadow:
-                      hovered === p.id ? `0 0 40px ${p.color}40` : "none",
+                    boxShadow: hovered === p.id ? `0 0 40px ${p.color}40` : "none",
                     transform: hovered === p.id ? "translateY(-3px)" : "none",
                   }}
                 >
@@ -160,21 +203,34 @@ export default function ProfileSwitcher({
                 <div className="text-center">
                   <p className="text-white font-semibold text-sm">{p.name}</p>
                   <p className="text-[#A1A1AA] text-xs mt-0.5">
-                    ${p.dailyBudgetLimit}/day
+                    ${p.dailyBudgetLimit}/day {p.password ? "· 🔒" : ""}
                   </p>
                 </div>
               </button>
             )}
             {editingId !== p.id && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  startEdit(p);
-                }}
-                className="text-[10px] text-[#A1A1AA] hover:text-white transition-colors"
-              >
-                edit
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startEdit(p);
+                  }}
+                  className="text-[10px] text-[#A1A1AA] hover:text-white transition-colors"
+                >
+                  edit
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteProfile(p);
+                    setAdminPasswordInput("");
+                    setDeleteError("");
+                  }}
+                  className="text-[10px] text-[#A1A1AA] hover:text-[#FF6B6B] transition-colors"
+                >
+                  delete
+                </button>
+              </div>
             )}
           </div>
         ))}
@@ -183,7 +239,7 @@ export default function ProfileSwitcher({
         {showAdd ? (
           <div className="flex flex-col items-center gap-4">
             <div
-              className="w-32 p-3 rounded-2xl flex flex-col gap-2"
+              className="w-40 p-3 rounded-2xl flex flex-col gap-2"
               style={{ border: "2px dashed #E9B380" }}
             >
               <input
@@ -195,6 +251,15 @@ export default function ProfileSwitcher({
                 style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
                 placeholder="Profile name"
                 autoFocus
+              />
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+                className="w-full text-xs px-2 py-1.5 rounded-lg outline-none text-white"
+                style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
+                placeholder="Password (optional)"
               />
               <div className="flex gap-1 flex-wrap justify-center">
                 {PROFILE_COLORS.map((c) => (
@@ -216,10 +281,10 @@ export default function ProfileSwitcher({
                   className="flex-1 text-[10px] py-1 rounded-md font-medium"
                   style={{ background: "#E9B380", color: "#0F0F12" }}
                 >
-                  Add
+                  Create
                 </button>
                 <button
-                  onClick={() => { setShowAdd(false); setNewName(""); }}
+                  onClick={() => { setShowAdd(false); setNewName(""); setNewPassword(""); }}
                   className="flex-1 text-[10px] py-1 rounded-md font-medium"
                   style={{ background: "#2A2A32", color: "#A1A1AA" }}
                 >
@@ -238,10 +303,7 @@ export default function ProfileSwitcher({
             <div
               className="w-32 h-32 rounded-2xl flex items-center justify-center transition-all duration-300"
               style={{
-                border:
-                  hovered === "add"
-                    ? "2px dashed #E9B380"
-                    : "2px dashed #2A2A32",
+                border: hovered === "add" ? "2px dashed #E9B380" : "2px dashed #2A2A32",
                 color: hovered === "add" ? "#E9B380" : "#A1A1AA",
                 transform: hovered === "add" ? "translateY(-3px)" : "none",
               }}
@@ -252,10 +314,7 @@ export default function ProfileSwitcher({
               </div>
             </div>
             <div className="text-center">
-              <p
-                className="font-semibold text-sm transition-colors"
-                style={{ color: hovered === "add" ? "#E9B380" : "#A1A1AA" }}
-              >
+              <p className="font-semibold text-sm transition-colors" style={{ color: hovered === "add" ? "#E9B380" : "#A1A1AA" }}>
                 Add Profile
               </p>
             </div>
@@ -267,6 +326,104 @@ export default function ProfileSwitcher({
       <p className="text-[#A1A1AA] text-xs absolute bottom-6">
         DotSpend · Context-Aware Expense Intelligence
       </p>
+
+      {/* Login modal */}
+      {loginProfile && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}
+          onClick={(e) => e.target === e.currentTarget && setLoginProfile(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-6"
+            style={{ background: "#18181C", border: "1px solid #2A2A32" }}
+          >
+            <h3 className="text-white font-semibold text-lg mb-1">Unlock {loginProfile.name}</h3>
+            <p className="text-[#A1A1AA] text-xs mb-4">
+              Enter your profile password to continue
+            </p>
+            <input
+              type="password"
+              value={loginPassword}
+              onChange={(e) => setLoginPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              autoFocus
+              placeholder="Password"
+              className="w-full text-sm px-3 py-2.5 rounded-lg outline-none text-white placeholder:text-[#A1A1AA] mb-3"
+              style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
+            />
+            {loginError && (
+              <p className="text-[#FF6B6B] text-xs mb-3">{loginError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={handleLogin}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white"
+                style={{ background: "#612AD5" }}
+              >
+                Enter
+              </button>
+              <button
+                onClick={() => setLoginProfile(null)}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold"
+                style={{ background: "#2A2A32", color: "#A1A1AA" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin delete modal */}
+      {deleteProfile && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}
+          onClick={(e) => e.target === e.currentTarget && setDeleteProfile(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-6"
+            style={{ background: "#18181C", border: "1px solid #2A2A32" }}
+          >
+            <h3 className="text-white font-semibold text-lg mb-1">
+              Delete {deleteProfile.name}?
+            </h3>
+            <p className="text-[#A1A1AA] text-xs mb-4">
+              This deletes the profile and all its expenses. Requires admin password.
+            </p>
+            <input
+              type="password"
+              value={adminPasswordInput}
+              onChange={(e) => setAdminPasswordInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && confirmAdminDelete()}
+              autoFocus
+              placeholder="Admin password"
+              className="w-full text-sm px-3 py-2.5 rounded-lg outline-none text-white placeholder:text-[#A1A1AA] mb-3"
+              style={{ background: "#0F0F12", border: "1px solid #FF6B6B" }}
+            />
+            {deleteError && (
+              <p className="text-[#FF6B6B] text-xs mb-3">{deleteError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={confirmAdminDelete}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white"
+                style={{ background: "#FF6B6B" }}
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setDeleteProfile(null)}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold"
+                style={{ background: "#2A2A32", color: "#A1A1AA" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

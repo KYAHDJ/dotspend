@@ -1,5 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
-import { INITIAL_EXPENSES, INITIAL_MESSAGES } from "./data";
+import { useState, useCallback, useEffect } from "react";
 import type { Expense, ChatMessage } from "./data";
 import {
   loadProfiles,
@@ -10,7 +9,7 @@ import {
   deleteExpense as deleteExpenseDB,
   loadMessages,
   saveMessage,
-  seedData,
+  clearDB,
 } from "./firestore";
 
 export interface Profile {
@@ -20,6 +19,7 @@ export interface Profile {
   initial: string;
   dailyBudgetLimit: number;
   currency: "USD" | "PHP";
+  password?: string;
 }
 
 export interface AppState {
@@ -31,15 +31,25 @@ export interface AppState {
 }
 
 const STORAGE_KEY = "dotspend_state";
+const AUTHED_KEY = "dotspend_authed_profiles";
+const VERSION_KEY = "dotspend_state_version";
+const STATE_VERSION = 2;
 const TODAY = new Date().toISOString().slice(0, 10);
 
-const DEFAULT_PROFILES: Profile[] = [
-  { id: "david", name: "David", color: "#612AD5", initial: "D", dailyBudgetLimit: 150, currency: "USD" },
-  { id: "shared", name: "Shared", color: "#E9B380", initial: "H", dailyBudgetLimit: 200, currency: "USD" },
-];
+// Master admin password used to delete any profile.
+export const ADMIN_PASSWORD =
+  import.meta.env.VITE_ADMIN_PASSWORD || "dotspend-admin";
 
 function getLocalState(): AppState | null {
   try {
+    // Fresh start: if a version bump is detected, clear old seeded data.
+    const version = localStorage.getItem(VERSION_KEY);
+    if (version !== String(STATE_VERSION)) {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(AUTHED_KEY);
+      localStorage.setItem(VERSION_KEY, String(STATE_VERSION));
+      return null;
+    }
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as AppState;
@@ -52,23 +62,51 @@ function getLocalState(): AppState | null {
 function saveLocal(state: AppState) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(VERSION_KEY, String(STATE_VERSION));
   } catch { /* ignore */ }
 }
 
+function loadAuthed(): string[] {
+  try {
+    const raw = localStorage.getItem(AUTHED_KEY);
+    if (raw) return JSON.parse(raw) as string[];
+  } catch { /* ignore */ }
+  return [];
+}
+
+function saveAuthed(ids: string[]) {
+  try {
+    localStorage.setItem(AUTHED_KEY, JSON.stringify(ids));
+  } catch { /* ignore */ }
+}
+
+// Detect a fresh-start (version bump) once at module scope, so we can both
+// wipe Firestore and reset localStorage consistently on first render.
+const IS_VERSION_MISMATCH = (() => {
+  try {
+    return localStorage.getItem(VERSION_KEY) !== String(STATE_VERSION);
+  } catch {
+    return false;
+  }
+})();
+
+// Fresh start: no seed data. App begins empty until the user creates profiles.
 function getDefaultState(): AppState {
   return {
-    profiles: DEFAULT_PROFILES,
-    activeProfileId: "david",
-    expenses: INITIAL_EXPENSES.map((e) => ({ ...e, date: TODAY, profileId: "david" })),
-    messages: INITIAL_MESSAGES.map((m) => ({ ...m, date: TODAY, profileId: "david" })),
+    profiles: [],
+    activeProfileId: "",
+    expenses: [],
+    messages: [],
     currency: "USD",
   };
 }
 
 export function useStore() {
-  const [state, setState] = useState<AppState>(getLocalState() || getDefaultState());
+  const [state, setState] = useState<AppState>(
+    getLocalState() || getDefaultState()
+  );
   const [loading, setLoading] = useState(true);
-  const seeded = useRef(false);
+  const [authedProfiles, setAuthedProfiles] = useState<string[]>(loadAuthed);
 
   // Load from Firestore on mount with timeout
   useEffect(() => {
@@ -83,6 +121,11 @@ export function useStore() {
 
     (async () => {
       try {
+        if (IS_VERSION_MISMATCH) {
+          // Wipe Firestore once so old default profiles don't reappear.
+          withTimeout(clearDB(), 6000, undefined).catch(() => {});
+        }
+
         const timeout = 5000;
         const [profiles, expenses, messages] = await Promise.all([
           withTimeout(loadProfiles(), timeout, []),
@@ -92,32 +135,13 @@ export function useStore() {
 
         if (cancelled) return;
 
-        if (profiles.length > 0) {
-          setState({
-            profiles,
-            activeProfileId: profiles[0].id,
-            expenses,
-            messages,
-            currency: profiles[0].currency || "USD",
-          });
-        } else if (!seeded.current) {
-          seeded.current = true;
-          const defaults: AppState = {
-            profiles: DEFAULT_PROFILES,
-            activeProfileId: "david",
-            expenses: INITIAL_EXPENSES.map((e) => ({ ...e, date: TODAY, profileId: "david" })),
-            messages: INITIAL_MESSAGES.map((m) => ({ ...m, date: TODAY, profileId: "david" })),
-            currency: "USD",
-          };
-          setState(defaults);
-          saveLocal(defaults);
-          // Fire-and-forget seed — don't block UI
-          withTimeout(
-            seedData(defaults.profiles, defaults.expenses, defaults.messages),
-            3000,
-            undefined
-          ).catch(() => {});
-        }
+        setState({
+          profiles,
+          activeProfileId: profiles[0]?.id || "",
+          expenses,
+          messages,
+          currency: profiles[0]?.currency || "USD",
+        });
       } catch (err) {
         console.warn("Firestore unavailable, using local data:", err);
       } finally {
@@ -128,16 +152,45 @@ export function useStore() {
     return () => { cancelled = true; };
   }, []);
 
+  const persistAuthed = useCallback((ids: string[]) => {
+    setAuthedProfiles(ids);
+    saveAuthed(ids);
+  }, []);
+
   // Persist to both localStorage and Firestore on state change
   useEffect(() => {
     if (loading) return;
     saveLocal(state);
   }, [state, loading]);
 
-  const activeProfile = state.profiles.find((p) => p.id === state.activeProfileId) || state.profiles[0];
+  const activeProfile =
+    state.profiles.find((p) => p.id === state.activeProfileId) ||
+    state.profiles[0];
 
   const todayExpenses = state.expenses.filter(
     (e) => e.date === TODAY && e.profileId === state.activeProfileId
+  );
+
+  const isProfileAuthed = useCallback(
+    (id: string) => authedProfiles.includes(id),
+    [authedProfiles]
+  );
+
+  const verifyProfilePassword = useCallback(
+    (id: string, password: string): boolean => {
+      const profile = state.profiles.find((p) => p.id === id);
+      if (!profile) return false;
+      if (!profile.password) {
+        persistAuthed([...authedProfiles, id]);
+        return true;
+      }
+      if (password === profile.password) {
+        persistAuthed([...authedProfiles, id]);
+        return true;
+      }
+      return false;
+    },
+    [state.profiles, authedProfiles, persistAuthed]
   );
 
   const setActiveProfile = useCallback((id: string) => {
@@ -186,7 +239,7 @@ export function useStore() {
     saveMessage(full).catch(console.warn);
   }, [state.activeProfileId]);
 
-  const addProfile = useCallback((name: string, color: string) => {
+  const addProfile = useCallback((name: string, color: string, password?: string) => {
     const id = name.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
     const newProfile: Profile = {
       id,
@@ -195,6 +248,7 @@ export function useStore() {
       initial: name[0].toUpperCase(),
       dailyBudgetLimit: 150,
       currency: "USD",
+      password: password || undefined,
     };
     setState((s) => {
       const newState = { ...s, profiles: [...s.profiles, newProfile] };
@@ -233,7 +287,8 @@ export function useStore() {
       return newState;
     });
     deleteProfileDB(id).catch(console.warn);
-  }, []);
+    persistAuthed(authedProfiles.filter((pid) => pid !== id));
+  }, [authedProfiles, persistAuthed]);
 
   const getExpensesForDate = useCallback(
     (date: string) => {
@@ -290,10 +345,13 @@ export function useStore() {
     addProfile,
     updateProfile,
     deleteProfile: deleteProfileFn,
+    isProfileAuthed,
+    verifyProfilePassword,
     getExpensesForDate,
     getDailyTotals,
     getWeekTotal,
     getMonthTotal,
     today: TODAY,
+    adminPassword: ADMIN_PASSWORD,
   };
 }

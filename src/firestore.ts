@@ -110,3 +110,22 @@ export async function seedData(
     console.warn("seedData failed:", err);
   }
 }
+
+// Wipe all app data (all collections). Used for a one-time fresh start.
+export async function clearDB(): Promise<void> {
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    const [profiles, expenses, messages] = await Promise.all([
+      getDocs(collection(db, "profiles")),
+      getDocs(collection(db, "expenses")),
+      getDocs(collection(db, "messages")),
+    ]);
+    const deletes: Promise<void>[] = [];
+    profiles.forEach((d) => deletes.push(deleteDoc(doc(db!, "profiles", d.id))));
+    expenses.forEach((d) => deletes.push(deleteDoc(doc(db!, "expenses", d.id))));
+    messages.forEach((d) => deletes.push(deleteDoc(doc(db!, "messages", d.id))));
+    await Promise.all(deletes);
+  } catch (err) {
+    console.warn("clearDB failed:", err);
+  }
+}
