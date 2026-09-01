@@ -3,9 +3,10 @@ import type { ChatMessage, Expense } from "../data";
 import { CATEGORY_COLORS, CATEGORY_ICONS } from "../data";
 import type { Profile, Currency } from "../store";
 import { CURRENCY_SYMBOLS } from "../store";
+import { buildContext, streamChat } from "../lib/groq";
 
 const SUGGESTIONS = [
-  { text: "What can I eat for under $15?", accent: "#E9B380" },
+  { text: "What can I eat today within my remaining budget?", accent: "#E9B380" },
   { text: "Show weekly trend", accent: "#CBE353" },
   { text: "Budget tips for today", accent: "#E9B380" },
   { text: "Biggest category today?", accent: "#CBE353" },
@@ -133,6 +134,8 @@ interface Props {
 export default function AIButler({ messages, expenses, allExpenses, profile, currency, onSendMessage }: Props) {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [streamingText, setStreamingText] = useState("");
+  const [streamError, setStreamError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
@@ -141,10 +144,10 @@ export default function AIButler({ messages, expenses, allExpenses, profile, cur
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, streamingText, isTyping]);
 
   const handleSend = useCallback(
-    (text?: string) => {
+    async (text?: string) => {
       const msgText = (text || input).trim();
       if (!msgText || isTyping) return;
 
@@ -153,39 +156,124 @@ export default function AIButler({ messages, expenses, allExpenses, profile, cur
         minute: "2-digit",
         hour12: true,
       });
+      const today = new Date().toISOString().slice(0, 10);
 
       const userMsg: ChatMessage = {
         id: Date.now(),
         from: "user",
         text: msgText,
         time: timeStr,
-        date: new Date().toISOString().slice(0, 10),
+        date: today,
         profileId: profile.id,
       };
       onSendMessage(userMsg);
       setInput("");
       setIsTyping(true);
+      setStreamingText("");
+      setStreamError(null);
 
-      setTimeout(() => {
-        const response = generateAIResponse(msgText, expenses, allExpenses, profile, currency);
+      // Recent conversation for lightweight multi-turn context.
+      const history: { role: "user" | "assistant"; content: string }[] = messages
+        .slice(-6)
+        .map((m) => ({
+          role: m.from === "ai" ? "assistant" : "user",
+          content: m.text,
+        }));
+
+      try {
+        const context = buildContext(profile, expenses, allExpenses);
+        const onChunk = (delta: string) => {
+          setStreamingText((prev) => prev + delta);
+        };
+
+        const result = await streamChat({
+          user: msgText,
+          context,
+          history,
+          onChunk,
+        });
+
+        if (!result.ok) {
+          // Fall back to the local deterministic butler when Groq is
+          // unavailable (e.g., missing server env or network failure).
+          const fallback = generateAIResponse(
+            msgText,
+            expenses,
+            allExpenses,
+            profile,
+            currency
+          );
+          const aiMsg: ChatMessage = {
+            id: Date.now() + 1,
+            from: "ai",
+            text: fallback.text,
+            time: new Date().toLocaleTimeString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            }),
+            isAlert: fallback.isAlert,
+            date: today,
+            profileId: profile.id,
+          };
+          onSendMessage(aiMsg);
+          setStreamError(result.error || "AI unavailable");
+        } else {
+          const full = result.text || "I couldn't find an answer.";
+          const aiMsg: ChatMessage = {
+            id: Date.now() + 1,
+            from: "ai",
+            text: full,
+            time: new Date().toLocaleTimeString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            }),
+            isAlert: totalSpent > profile.dailyBudgetLimit * 0.9,
+            date: today,
+            profileId: profile.id,
+          };
+          onSendMessage(aiMsg);
+        }
+      } catch (err) {
+        const fallback = generateAIResponse(
+          msgText,
+          expenses,
+          allExpenses,
+          profile,
+          currency
+        );
         const aiMsg: ChatMessage = {
           id: Date.now() + 1,
           from: "ai",
-          text: response.text,
+          text: fallback.text,
           time: new Date().toLocaleTimeString("en-US", {
             hour: "numeric",
             minute: "2-digit",
             hour12: true,
           }),
-          isAlert: response.isAlert,
-          date: new Date().toISOString().slice(0, 10),
+          isAlert: fallback.isAlert,
+          date: today,
           profileId: profile.id,
         };
         onSendMessage(aiMsg);
+        setStreamError(err instanceof Error ? err.message : "AI unavailable");
+      } finally {
         setIsTyping(false);
-      }, 800);
+        setStreamingText("");
+      }
     },
-    [input, isTyping, expenses, allExpenses, profile, currency, onSendMessage]
+    [
+      input,
+      isTyping,
+      messages,
+      expenses,
+      allExpenses,
+      profile,
+      currency,
+      onSendMessage,
+      totalSpent,
+    ]
   );
 
   return (
@@ -250,13 +338,28 @@ export default function AIButler({ messages, expenses, allExpenses, profile, cur
                 <path d="M12 6v6l4 2" />
               </svg>
             </div>
-            <div className="px-3 py-2 rounded-2xl rounded-tl-sm text-sm" style={{ background: "#1E1E26", border: "1px solid #2A2A32" }}>
-              <span className="inline-flex gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#A1A1AA] animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-[#A1A1AA] animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-[#A1A1AA] animate-bounce" style={{ animationDelay: "300ms" }} />
-              </span>
+            <div
+              className="flex-1 px-3 py-2 rounded-2xl rounded-tl-sm text-sm text-white leading-relaxed whitespace-pre-wrap"
+              style={{ background: "#1E1E26", border: "1px solid #2A2A32" }}
+            >
+              {streamingText ? (
+                <>
+                  {streamingText}
+                  <span className="inline-block w-[6px] h-[14px] align-text-bottom ml-0.5 animate-pulse" style={{ background: "#9B6EFF" }} />
+                </>
+              ) : (
+                <span className="inline-flex gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#A1A1AA] animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#A1A1AA] animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#A1A1AA] animate-bounce" style={{ animationDelay: "300ms" }} />
+                </span>
+              )}
             </div>
+          </div>
+        )}
+        {streamError && !isTyping && (
+          <div className="text-[10px] text-[#E9B380] px-1">
+            AI temporarily offline — showing local assistant. {streamError}
           </div>
         )}
         <div ref={messagesEndRef} />
