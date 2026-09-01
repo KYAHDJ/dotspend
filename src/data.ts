@@ -23,6 +23,35 @@ export interface ChatMessage {
   profileId: string;
 }
 
+// Extensible payload field so Groq AI can later inject alerts / financial
+// insights directly into the notification drawer without schema changes.
+export type NotificationType =
+  | "budget"
+  | "expense"
+  | "insight"
+  | "alert"
+  | "custom";
+
+export interface NotificationPayload {
+  // Reserved for future AI / Groq integration.
+  source?: string;
+  confidence?: number;
+  amount?: number;
+  category?: string;
+  [key: string]: unknown;
+}
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: NotificationType;
+  read: boolean;
+  createdAt: string; // ISO timestamp
+  profileId: string;
+  payload?: NotificationPayload;
+}
+
 export const CATEGORY_COLORS: Record<string, string> = {
   Food: "#612AD5",
   Transport: "#E9B380",

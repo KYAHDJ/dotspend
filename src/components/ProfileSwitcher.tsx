@@ -6,10 +6,10 @@ const PROFILE_COLORS = ["#612AD5", "#E9B380", "#CBE353", "#FF6B6B", "#4ECDC4", "
 interface Props {
   profiles: Profile[];
   onSelect: (id: string) => void;
-  onAddProfile: (name: string, color: string, password?: string) => string;
+  onAddProfile: (name: string, color: string, password?: string) => Promise<string>;
   onDeleteProfile: (id: string) => void;
-  onUpdateProfile: (id: string, updates: Partial<Profile>) => void;
-  verifyProfilePassword: (id: string, password: string) => boolean;
+  onUpdateProfile: (id: string, updates: Partial<Profile>) => Promise<void>;
+  verifyProfilePassword: (id: string, password: string) => Promise<boolean>;
   isProfileAuthed: (id: string) => boolean;
   adminPassword: string;
 }
@@ -101,9 +101,9 @@ export default function ProfileSwitcher({
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [deleteError, setDeleteError] = useState("");
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!newName.trim()) return;
-    const id = onAddProfile(newName.trim().slice(0, 24), selectedColor, newPassword || undefined);
+    const id = await onAddProfile(newName.trim().slice(0, 24), selectedColor, newPassword || undefined);
     if (!id) return;
     setNewName("");
     setNewPassword("");
@@ -123,9 +123,9 @@ export default function ProfileSwitcher({
     setLoginError("");
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!loginProfile) return;
-    if (verifyProfilePassword(loginProfile.id, loginPassword)) {
+    if (await verifyProfilePassword(loginProfile.id, loginPassword)) {
       onSelect(loginProfile.id);
       setLoginProfile(null);
     } else {
@@ -138,7 +138,7 @@ export default function ProfileSwitcher({
     setEditName(p.name);
     setEditBudget(String(p.dailyBudgetLimit));
     setEditColor(p.color);
-    setEditPassword(p.password || "");
+    setEditPassword("");
   };
 
   const saveEdit = () => {

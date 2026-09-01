@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import type { Expense } from "../data";
 import { CATEGORY_COLORS, CATEGORY_ICONS } from "../data";
+import type { Currency } from "../store";
+import { CURRENCY_SYMBOLS } from "../store";
 import { ExpenseRow } from "./ExpenseColumn";
 
 interface Props {
@@ -8,6 +10,7 @@ interface Props {
   expenses: Expense[];
   activeProfileId: string;
   dailyBudget: number;
+  currency: Currency;
   dailyTotals: Record<string, { total: number; status: "under" | "near" | "over" }>;
   getExpensesForDate: (date: string) => Expense[];
   onDeleteExpense: (id: number) => void;
@@ -33,11 +36,13 @@ export default function CalendarView({
   expenses,
   activeProfileId,
   dailyBudget,
+  currency,
   dailyTotals,
   getExpensesForDate,
   onDeleteExpense,
   onUpdateExpense,
 }: Props) {
+  const sym = CURRENCY_SYMBOLS[currency] || "$";
   const now = new Date();
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
@@ -163,9 +168,9 @@ export default function CalendarView({
           {/* Month summary */}
           <div className="grid grid-cols-3 gap-3 mt-6">
             {[
-              { label: "Month Total", value: `$${monthStats.total.toFixed(0)}`, color: "white" },
+              { label: "Month Total", value: `${sym}${monthStats.total.toFixed(0)}`, color: "white" },
               { label: "Over Budget Days", value: `${monthStats.overDays} days`, color: "#FF6B6B" },
-              { label: "Avg Daily", value: `$${monthStats.avgDaily.toFixed(0)}`, color: "#CBE353" },
+              { label: "Avg Daily", value: `${sym}${monthStats.avgDaily.toFixed(0)}`, color: "#CBE353" },
             ].map((s) => (
               <div key={s.label} className="p-3 rounded-xl" style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}>
                 <div className="text-[11px] text-[#A1A1AA]">{s.label}</div>
@@ -202,7 +207,7 @@ export default function CalendarView({
           {/* Total */}
           {selectedData ? (
             <div className="rounded-xl p-4 mb-4 text-center" style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}>
-              <div className="font-mono-data text-2xl font-bold text-white">${selectedData.total.toFixed(2)}</div>
+              <div className="font-mono-data text-2xl font-bold text-white">{sym}{selectedData.total.toFixed(2)}</div>
               <div className="text-[#A1A1AA] text-xs mt-1">total spent</div>
               <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ background: "#2A2A32" }}>
                 <div
@@ -214,12 +219,12 @@ export default function CalendarView({
                 />
               </div>
               <div className="text-[10px] text-[#A1A1AA] mt-1.5 font-mono-data">
-                {((selectedData.total / dailyBudget) * 100).toFixed(1)}% of ${dailyBudget} budget
+                {((selectedData.total / dailyBudget) * 100).toFixed(1)}% of {sym}{dailyBudget} budget
               </div>
             </div>
           ) : (
             <div className="rounded-xl p-4 mb-4 text-center" style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}>
-              <div className="font-mono-data text-2xl font-bold text-white">$0.00</div>
+              <div className="font-mono-data text-2xl font-bold text-white">{sym}0.00</div>
               <div className="text-[#A1A1AA] text-xs mt-1">no expenses</div>
             </div>
           )}
@@ -253,7 +258,7 @@ export default function CalendarView({
             ) : (
               <div className="text-center py-8 rounded-xl" style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}>
                 <div className="text-[#A1A1AA] text-sm">
-                  {selectedData ? `$${selectedData.total.toFixed(2)} logged` : "No expenses"}
+                  {selectedData ? `${sym}${selectedData.total.toFixed(2)} logged` : "No expenses"}
                 </div>
                 <div className="text-xs text-[#A1A1AA] mt-1">
                   {selectedExpenses.length === 0 && selectedDate !== todayDate

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import type { Expense, ChatMessage } from "./data";
+import type { Expense, ChatMessage, AppNotification } from "./data";
 import {
   loadProfiles,
   saveProfile,
@@ -9,9 +9,19 @@ import {
   deleteExpense as deleteExpenseDB,
   loadMessages,
   saveMessage,
+  loadNotifications,
+  saveNotification,
+  deleteNotification as deleteNotificationDB,
   clearDB,
 } from "./firestore";
 import { isFirebaseConfigured } from "./firebase";
+
+export type Currency = "USD" | "PHP";
+
+export interface PasswordHash {
+  salt: string;
+  hash: string;
+}
 
 export interface Profile {
   id: string;
@@ -19,8 +29,10 @@ export interface Profile {
   color: string;
   initial: string;
   dailyBudgetLimit: number;
-  currency: "USD" | "PHP";
-  password?: string;
+  currency: Currency;
+  // Hashed password: { salt, hash }. Kept backward-compatible with legacy
+  // plaintext strings for profiles created before hashing was introduced.
+  password?: string | PasswordHash;
 }
 
 export interface AppState {
@@ -28,33 +40,101 @@ export interface AppState {
   activeProfileId: string;
   expenses: Expense[];
   messages: ChatMessage[];
-  currency: "USD" | "PHP";
+  notifications: AppNotification[];
+  currency: Currency;
 }
 
 const STORAGE_KEY = "dotspend_state";
 const AUTHED_KEY = "dotspend_authed_profiles";
 const VERSION_KEY = "dotspend_state_version";
-const STATE_VERSION = 2;
+const STATE_VERSION = 3;
 const TODAY = new Date().toISOString().slice(0, 10);
 
 // Master admin password used to delete any profile.
 export const ADMIN_PASSWORD =
   import.meta.env.VITE_ADMIN_PASSWORD || "dotspend-admin";
 
+// Currency symbols used for dynamic formatting across the dashboard.
+export const CURRENCY_SYMBOLS: Record<Currency, string> = {
+  USD: "$",
+  PHP: "₱",
+};
+
+export function formatMoney(amount: number, currency: Currency): string {
+  const symbol = CURRENCY_SYMBOLS[currency] || "$";
+  return `${symbol}${amount.toFixed(2)}`;
+}
+
+// ── Password hashing (Web Crypto SHA-256 with per-profile salt) ──
+function randomSalt(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export async function hashPassword(
+  password: string,
+  salt?: string
+): Promise<PasswordHash> {
+  const s = salt || randomSalt();
+  const data = new TextEncoder().encode(s + password);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const hash = Array.from(new Uint8Array(digest), (b) =>
+    b.toString(16).padStart(2, "0")
+  ).join("");
+  return { salt: s, hash };
+}
+
+async function verifyPassword(
+  password: string | PasswordHash | undefined,
+  candidate: string
+): Promise<boolean> {
+  if (!password) return true;
+  if (typeof password === "string") {
+    // Legacy plaintext password.
+    return candidate === password;
+  }
+  const hash = await hashPassword(candidate, password.salt);
+  return hash.hash === password.hash;
+}
+
 function getLocalState(): AppState | null {
   try {
     // Fresh start: if a version bump is detected, clear old seeded data.
     const version = localStorage.getItem(VERSION_KEY);
     if (version !== String(STATE_VERSION)) {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(AUTHED_KEY);
+      // Migration: keep the user's profiles/expenses but drop the now-unused
+      // legacy seed path. Preserve state across the currency/password upgrade.
       localStorage.setItem(VERSION_KEY, String(STATE_VERSION));
-      return null;
+      // Re-read below — the same payload is compatible as long as profiles exist.
     }
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as AppState;
-      if (parsed.profiles && parsed.expenses) return parsed;
+      if (parsed.profiles && parsed.expenses) {
+        const profiles: Profile[] = parsed.profiles.map((p) => ({
+          ...p,
+          currency: p.currency === "PHP" ? ("PHP" as Currency) : ("USD" as Currency),
+        }));
+        const notifications = Array.isArray(parsed.notifications)
+          ? parsed.notifications
+          : [];
+        const activeProfile = profiles.find(
+          (p) => p.id === parsed.activeProfileId
+        );
+        const activeCurrency: Currency =
+          activeProfile?.currency && activeProfile.currency in CURRENCY_SYMBOLS
+            ? (activeProfile.currency as Currency)
+            : parsed.currency === "PHP"
+            ? "PHP"
+            : "USD";
+        return {
+          ...parsed,
+          profiles,
+          notifications,
+          currency: activeCurrency,
+        };
+      }
     }
   } catch { /* ignore */ }
   return null;
@@ -91,13 +171,13 @@ const IS_VERSION_MISMATCH = (() => {
   }
 })();
 
-// Fresh start: no seed data. App begins empty until the user creates profiles.
 function getDefaultState(): AppState {
   return {
     profiles: [],
     activeProfileId: "",
     expenses: [],
     messages: [],
+    notifications: [],
     currency: "USD",
   };
 }
@@ -123,30 +203,25 @@ export function useStore() {
     (async () => {
       try {
         if (IS_VERSION_MISMATCH) {
-          // Wipe Firestore once so old default profiles don't reappear.
+          // Do a best-effort clear so old default profiles don't reappear.
           withTimeout(clearDB(), 6000, undefined).catch(() => {});
         }
 
-        // If Firestore is not configured, keep the localStorage-backed state
-        // instead of replacing it with empty arrays (which would erase data).
         if (!isFirebaseConfigured) {
           if (!cancelled) setLoading(false);
           return;
         }
 
         const timeout = 5000;
-        const [profiles, expenses, messages] = await Promise.all([
+        const [profiles, expenses, messages, notifications] = await Promise.all([
           withTimeout(loadProfiles(), timeout, []),
           withTimeout(loadExpenses(), timeout, []),
           withTimeout(loadMessages(), timeout, []),
+          withTimeout(loadNotifications(), timeout, []),
         ]);
 
         if (cancelled) return;
 
-        // Cloud is the source of truth, but never clobber local data with an
-        // empty cloud (e.g. if the cloud write failed or rules blocked it).
-        // If the cloud is empty but we have local data, keep local data and
-        // re-push everything to the cloud so future loads come from Firestore.
         const hasLocal =
           state.profiles.length > 0 ||
           state.expenses.length > 0 ||
@@ -156,16 +231,21 @@ export function useStore() {
           state.profiles.forEach((p) => saveProfile(p).catch(console.warn));
           state.expenses.forEach((e) => saveExpense(e).catch(console.warn));
           state.messages.forEach((m) => saveMessage(m).catch(console.warn));
+          state.notifications.forEach((n) => saveNotification(n).catch(console.warn));
           if (!cancelled) setLoading(false);
           return;
         }
 
+        const activeProfile = profiles.find(
+          (p) => p.id === state.activeProfileId
+        );
         setState({
           profiles,
-          activeProfileId: profiles[0]?.id || "",
+          activeProfileId: activeProfile?.id || state.activeProfileId || profiles[0]?.id || "",
           expenses,
           messages,
-          currency: profiles[0]?.currency || "USD",
+          notifications,
+          currency: activeProfile?.currency || profiles[0]?.currency || "USD",
         });
       } catch (err) {
         console.warn("Firestore unavailable, using local data:", err);
@@ -192,9 +272,20 @@ export function useStore() {
     state.profiles.find((p) => p.id === state.activeProfileId) ||
     state.profiles[0];
 
+  // Per-profile currency: derive from the active profile so switching profiles
+  // never bleeds one profile's currency setting into another.
+  const currency: Currency =
+    activeProfile?.currency || state.currency || "USD";
+
   const todayExpenses = state.expenses.filter(
     (e) => e.date === TODAY && e.profileId === state.activeProfileId
   );
+
+  const activeNotifications = state.notifications
+    .filter((n) => n.profileId === state.activeProfileId)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+
+  const unreadCount = activeNotifications.filter((n) => !n.read).length;
 
   const isProfileAuthed = useCallback(
     (id: string) => authedProfiles.includes(id),
@@ -202,15 +293,12 @@ export function useStore() {
   );
 
   const verifyProfilePassword = useCallback(
-    (id: string, password: string): boolean => {
+    async (id: string, password: string): Promise<boolean> => {
       const profile = state.profiles.find((p) => p.id === id);
       if (!profile) return false;
-      if (!profile.password) {
-        persistAuthed([...authedProfiles, id]);
-        return true;
-      }
-      if (password === profile.password) {
-        persistAuthed([...authedProfiles, id]);
+      const ok = await verifyPassword(profile.password, password);
+      if (ok) {
+        persistAuthed([...new Set([...authedProfiles, id])]);
         return true;
       }
       return false;
@@ -221,44 +309,81 @@ export function useStore() {
   const setActiveProfile = useCallback((id: string) => {
     setState((s) => {
       const profile = s.profiles.find((p) => p.id === id);
-      const newState = { ...s, activeProfileId: id, currency: profile?.currency || s.currency };
+      const newState: AppState = {
+        ...s,
+        activeProfileId: id,
+        currency: profile?.currency || s.currency,
+      };
       saveLocal(newState);
       return newState;
     });
   }, []);
 
-  const setCurrency = useCallback((c: "USD" | "PHP") => {
+  // Sets only the ACTIVE profile's currency (isolated per profile).
+  const setCurrency = useCallback((c: Currency) => {
     setState((s) => {
-      // Apply the currency change globally: to the app-wide currency, every
-      // profile, and every expense so the whole UI updates at once.
+      if (!s.activeProfileId) return s;
       const newState: AppState = {
         ...s,
         currency: c,
-        profiles: s.profiles.map((p) => ({ ...p, currency: c })),
-        expenses: s.expenses.map((e) => ({ ...e, currency: c })),
+        profiles: s.profiles.map((p) =>
+          p.id === s.activeProfileId ? { ...p, currency: c } : p
+        ),
       };
       saveLocal(newState);
       return newState;
     });
-    // Persist the updated profile currencies to Firestore.
-    state.profiles.forEach((p) =>
-      saveProfile({ ...p, currency: c }).catch(console.warn)
-    );
-  }, [state.profiles]);
+    const active = state.profiles.find((p) => p.id === state.activeProfileId);
+    if (active) {
+      saveProfile({ ...active, currency: c }).catch(console.warn);
+    }
+  }, [state.profiles, state.activeProfileId]);
+
+  const changePassword = useCallback(
+    async (profileId: string, newPassword: string) => {
+      const hashed = await hashPassword(newPassword);
+      const updates: Partial<Profile> = { password: hashed };
+      setState((s) => {
+        const newState: AppState = {
+          ...s,
+          profiles: s.profiles.map((p) =>
+            p.id === profileId ? { ...p, ...updates } : p
+          ),
+        };
+        saveLocal(newState);
+        return newState;
+      });
+      const profile = state.profiles.find((p) => p.id === profileId);
+      if (profile) saveProfile({ ...profile, ...updates }).catch(console.warn);
+    },
+    [state.profiles]
+  );
+
+  // Log out the current profile: clear its auth and reset to profile screen.
+  const logout = useCallback(() => {
+    const id = state.activeProfileId;
+    setState((s) => ({
+      ...s,
+      activeProfileId: "",
+    }));
+    if (id) {
+      persistAuthed(authedProfiles.filter((pid) => pid !== id));
+    }
+  }, [state.activeProfileId, authedProfiles, persistAuthed]);
 
   const addExpense = useCallback((expense: Expense) => {
-    const full: Expense = { ...expense, date: TODAY, profileId: state.activeProfileId };
+    const full: Expense = { ...expense, date: TODAY, profileId: state.activeProfileId, currency: currency };
     setState((s) => {
-      const newState = { ...s, expenses: [...s.expenses, full] };
+      const newState: AppState = { ...s, expenses: [...s.expenses, full] };
       saveLocal(newState);
       return newState;
     });
     saveExpense(full).catch(console.warn);
-  }, [state.activeProfileId]);
+  }, [state.activeProfileId, currency]);
 
   const deleteExpense = useCallback((id: number) => {
     setState((s) => {
-      const newState = { ...s, expenses: s.expenses.filter((e) => e.id !== id) };
+      const newState: AppState = { ...s, expenses: s.expenses.filter((e) => e.id !== id) };
       saveLocal(newState);
       return newState;
     });
@@ -267,7 +392,7 @@ export function useStore() {
 
   const updateExpense = useCallback((id: number, updates: Partial<Expense>) => {
     setState((s) => {
-      const newState = {
+      const newState: AppState = {
         ...s,
         expenses: s.expenses.map((e) => (e.id === id ? { ...e, ...updates } : e)),
       };
@@ -281,56 +406,79 @@ export function useStore() {
   const addMessage = useCallback((msg: ChatMessage) => {
     const full: ChatMessage = { ...msg, date: TODAY, profileId: state.activeProfileId };
     setState((s) => {
-      const newState = { ...s, messages: [...s.messages, full] };
+      const newState: AppState = { ...s, messages: [...s.messages, full] };
       saveLocal(newState);
       return newState;
     });
     saveMessage(full).catch(console.warn);
   }, [state.activeProfileId]);
 
-  const addProfile = useCallback((name: string, color: string, password?: string) => {
-    const id = name.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
-    const newProfile: Profile = {
-      id,
-      name,
-      color,
-      initial: name[0].toUpperCase(),
-      dailyBudgetLimit: 150,
-      currency: "USD",
-      password: password || undefined,
-    };
-    setState((s) => {
-      const newState = { ...s, profiles: [...s.profiles, newProfile] };
-      saveLocal(newState);
-      return newState;
-    });
-    saveProfile(newProfile).catch(console.warn);
-    return id;
-  }, []);
-
-  const updateProfile = useCallback((id: string, updates: Partial<Profile>) => {
-    setState((s) => {
-      const newState = {
-        ...s,
-        profiles: s.profiles.map((p) => (p.id === id ? { ...p, ...updates } : p)),
+  const addProfile = useCallback(
+    async (name: string, color: string, password?: string): Promise<string> => {
+      const id = name.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
+      const newProfile: Profile = {
+        id,
+        name,
+        color,
+        initial: name[0].toUpperCase(),
+        dailyBudgetLimit: 150,
+        currency: "USD",
+        password: password
+          ? await hashPassword(password)
+          : undefined,
       };
-      saveLocal(newState);
-      return newState;
-    });
-    const profile = state.profiles.find((p) => p.id === id);
-    if (profile) saveProfile({ ...profile, ...updates }).catch(console.warn);
-  }, [state.profiles]);
+      setState((s) => {
+        const newState: AppState = { ...s, profiles: [...s.profiles, newProfile] };
+        saveLocal(newState);
+        return newState;
+      });
+      saveProfile(newProfile).catch(console.warn);
+      return id;
+    },
+    []
+  );
+
+  const updateProfile = useCallback(
+    async (id: string, updates: Partial<Profile>) => {
+      let finalUpdates = updates;
+      if (updates.password === undefined || updates.password === "") {
+        // Clearing the password removes it entirely.
+        finalUpdates = { ...updates };
+        delete finalUpdates.password;
+      } else if (typeof updates.password === "string") {
+        // Hash any plaintext password before persisting.
+        finalUpdates = {
+          ...updates,
+          password: await hashPassword(updates.password as string),
+        };
+      }
+      setState((s) => {
+        const newState: AppState = {
+          ...s,
+          profiles: s.profiles.map((p) =>
+            p.id === id ? { ...p, ...finalUpdates } : p
+          ),
+        };
+        saveLocal(newState);
+        return newState;
+      });
+      const profile = state.profiles.find((p) => p.id === id);
+      if (profile) saveProfile({ ...profile, ...finalUpdates }).catch(console.warn);
+    },
+    [state.profiles]
+  );
 
   const deleteProfileFn = useCallback((id: string) => {
     setState((s) => {
       const remaining = s.profiles.filter((p) => p.id !== id);
       if (remaining.length === 0) return s;
-      const newState = {
+      const newState: AppState = {
         ...s,
         profiles: remaining,
         activeProfileId: s.activeProfileId === id ? remaining[0].id : s.activeProfileId,
         expenses: s.expenses.filter((e) => e.profileId !== id),
         messages: s.messages.filter((m) => m.profileId !== id),
+        notifications: s.notifications.filter((n) => n.profileId !== id),
       };
       saveLocal(newState);
       return newState;
@@ -338,6 +486,78 @@ export function useStore() {
     deleteProfileDB(id).catch(console.warn);
     persistAuthed(authedProfiles.filter((pid) => pid !== id));
   }, [authedProfiles, persistAuthed]);
+
+  // ── Notifications ──
+  const addNotification = useCallback(
+    (notification: Omit<AppNotification, "id" | "createdAt" | "profileId" | "read">) => {
+      const full: AppNotification = {
+        id:
+          "n-" +
+          Date.now().toString(36) +
+          "-" +
+          Math.random().toString(36).slice(2, 8),
+        ...notification,
+        read: false,
+        createdAt: new Date().toISOString(),
+        profileId: state.activeProfileId,
+      };
+      setState((s) => {
+        const newState: AppState = {
+          ...s,
+          notifications: [...s.notifications, full],
+        };
+        saveLocal(newState);
+        return newState;
+      });
+      saveNotification(full).catch(console.warn);
+      return full;
+    },
+    [state.activeProfileId]
+  );
+
+  const markNotificationRead = useCallback((id: string) => {
+    setState((s) => {
+      const newState: AppState = {
+        ...s,
+        notifications: s.notifications.map((n) =>
+          n.id === id ? { ...n, read: true } : n
+        ),
+      };
+      saveLocal(newState);
+      return newState;
+    });
+    const n = state.notifications.find((x) => x.id === id);
+    if (n) saveNotification({ ...n, read: true }).catch(console.warn);
+  }, [state.notifications]);
+
+  const markAllNotificationsRead = useCallback(() => {
+    const ids = state.notifications
+      .filter((n) => n.profileId === state.activeProfileId && !n.read)
+      .map((n) => n.id);
+    if (ids.length === 0) return;
+    setState((s) => {
+      const newState: AppState = {
+        ...s,
+        notifications: s.notifications.map((n) =>
+          ids.includes(n.id) ? { ...n, read: true } : n
+        ),
+      };
+      saveLocal(newState);
+      return newState;
+    });
+  }, [state.notifications, state.activeProfileId]);
+
+  const deleteNotification = useCallback((id: string) => {
+    setState((s) => {
+      const newState: AppState = {
+        ...s,
+        notifications: s.notifications.filter((n) => n.id !== id),
+      };
+      saveLocal(newState);
+      return newState;
+    });
+    deleteNotificationDB(id).catch(console.warn);
+  }, []);
 
   const getExpensesForDate = useCallback(
     (date: string) => {
@@ -386,8 +606,13 @@ export function useStore() {
     activeProfile,
     todayExpenses,
     loading,
+    currency,
+    activeNotifications,
+    unreadCount,
     setActiveProfile,
     setCurrency,
+    changePassword,
+    logout,
     addExpense,
     deleteExpense,
     updateExpense,
@@ -395,6 +620,10 @@ export function useStore() {
     addProfile,
     updateProfile,
     deleteProfile: deleteProfileFn,
+    addNotification,
+    markNotificationRead,
+    markAllNotificationsRead,
+    deleteNotification,
     isProfileAuthed,
     verifyProfilePassword,
     getExpensesForDate,

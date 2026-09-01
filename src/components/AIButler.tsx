@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { ChatMessage, Expense } from "../data";
 import { CATEGORY_COLORS, CATEGORY_ICONS } from "../data";
-import type { Profile } from "../store";
+import type { Profile, Currency } from "../store";
+import { CURRENCY_SYMBOLS } from "../store";
 
 const SUGGESTIONS = [
   { text: "What can I eat for under $15?", accent: "#E9B380" },
@@ -18,6 +19,7 @@ function generateAIResponse(
   currency: string
 ): { text: string; isAlert: boolean } {
   const q = question.toLowerCase();
+  const sym = CURRENCY_SYMBOLS[(currency as Currency)] || "$";
   const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
   const remaining = Math.max(0, profile.dailyBudgetLimit - totalSpent);
   const pct = ((totalSpent / profile.dailyBudgetLimit) * 100).toFixed(0);
@@ -54,7 +56,7 @@ function generateAIResponse(
   // Budget warnings
   if (pct && parseInt(pct) >= 90) {
     return {
-      text: `Heads up! You've spent ${pct}% of your $${profile.dailyBudgetLimit} budget today. Only $${remaining.toFixed(2)} left. Maybe skip that extra purchase and save it for tomorrow?`,
+      text: `Heads up! You've spent ${pct}% of your ${sym}${profile.dailyBudgetLimit} budget today. Only ${sym}${remaining.toFixed(2)} left. Maybe skip that extra purchase and save it for tomorrow?`,
       isAlert: true,
     };
   }
@@ -64,21 +66,21 @@ function generateAIResponse(
     const foodBudget = profile.dailyBudgetLimit * 0.3;
     const foodLeft = Math.max(0, foodBudget - foodSpent);
     return {
-      text: `You've spent $${foodSpent.toFixed(2)} on food so far today. With $${foodLeft.toFixed(2)} left in your food budget, here are some ideas:\n\n• Local deli sandwich: ~$8-12\n• Rice bowl spot: ~$10-14\n• Home cooking: ~$5-8\n\nWant me to find something specific in your area?`,
+      text: `You've spent ${sym}${foodSpent.toFixed(2)} on food so far today. With ${sym}${foodLeft.toFixed(2)} left in your food budget, here are some ideas:\n\n• Local deli sandwich: ~$8-12\n• Rice bowl spot: ~$10-14\n• Home cooking: ~$5-8\n\nWant me to find something specific in your area?`,
       isAlert: false,
     };
   }
 
   if (q.includes("weekly") || q.includes("trend") || q.includes("week")) {
     return {
-      text: `Here's your weekly snapshot:\n\n• This week: $${thisWeek.toFixed(2)}\n• Budget: $${(profile.dailyBudgetLimit * 7).toFixed(0)}\n• Daily avg: $${(thisWeek / 7).toFixed(2)}\n\n${biggestCat ? `Your top category is ${biggestCat[0]} at $${biggestCat[1].toFixed(2)}.` : ""} ${remaining < 30 ? "You're running low today!" : "You're doing well so far."}`,
+      text: `Here's your weekly snapshot:\n\n• This week: ${sym}${thisWeek.toFixed(2)}\n• Budget: ${sym}${(profile.dailyBudgetLimit * 7).toFixed(0)}\n• Daily avg: ${sym}${(thisWeek / 7).toFixed(2)}\n\n${biggestCat ? `Your top category is ${biggestCat[0]} at ${sym}${biggestCat[1].toFixed(2)}.` : ""} ${remaining < 30 ? "You're running low today!" : "You're doing well so far."}`,
       isAlert: false,
     };
   }
 
   if (q.includes("tip") || q.includes("advice") || q.includes("suggest")) {
     return {
-      text: `Here are some budget-friendly tips:\n\n1. Set a daily food limit of $${(profile.dailyBudgetLimit * 0.3).toFixed(0)} (30% of budget)\n2. Walk or use public transit instead of rideshare when possible\n3. Try the 24-hour rule: wait a day before non-essential purchases\n4. Track every expense — you're already doing great with that!\n\nYour remaining budget today is $${remaining.toFixed(2)}.`,
+      text: `Here are some budget-friendly tips:\n\n1. Set a daily food limit of ${sym}${(profile.dailyBudgetLimit * 0.3).toFixed(0)} (30% of budget)\n2. Walk or use public transit instead of rideshare when possible\n3. Try the 24-hour rule: wait a day before non-essential purchases\n4. Track every expense — you're already doing great with that!\n\nYour remaining budget today is ${sym}${remaining.toFixed(2)}.`,
       isAlert: false,
     };
   }
@@ -87,7 +89,7 @@ function generateAIResponse(
     if (biggestCat) {
       const pctOfTotal = totalSpent > 0 ? ((biggestCat[1] / totalSpent) * 100).toFixed(0) : "0";
       return {
-        text: `Your biggest category today is ${biggestCat[0]} at $${biggestCat[1].toFixed(2)} (${pctOfTotal}% of total).\n\n${sortedCats.map(([cat, amt]) => `${CATEGORY_ICONS[cat] || "📦"} ${cat}: $${amt.toFixed(2)}`).join("\n")}`,
+        text: `Your biggest category today is ${biggestCat[0]} at ${sym}${biggestCat[1].toFixed(2)} (${pctOfTotal}% of total).\n\n${sortedCats.map(([cat, amt]) => `${CATEGORY_ICONS[cat] || "📦"} ${cat}: ${sym}${amt.toFixed(2)}`).join("\n")}`,
         isAlert: false,
       };
     }
@@ -98,7 +100,7 @@ function generateAIResponse(
     const entries = Object.entries(memberTotals).sort((a, b) => b[1] - a[1]);
     if (entries.length > 0) {
       return {
-        text: `Spending by person today:\n\n${entries.map(([name, amt]) => `• ${name}: $${amt.toFixed(2)}`).join("\n")}\n\n${entries[0][0]} spent the most at $${entries[0][1].toFixed(2)}.`,
+        text: `Spending by person today:\n\n${entries.map(([name, amt]) => `• ${name}: ${sym}${amt.toFixed(2)}`).join("\n")}\n\n${entries[0][0]} spent the most at ${sym}${entries[0][1].toFixed(2)}.`,
         isAlert: false,
       };
     }
@@ -108,13 +110,13 @@ function generateAIResponse(
   // Default contextual response
   if (totalSpent === 0) {
     return {
-      text: `Good morning! Your daily budget is $${profile.dailyBudgetLimit}. You haven't logged any expenses yet today. Ready to start tracking?`,
+      text: `Good morning! Your daily budget is ${sym}${profile.dailyBudgetLimit}. You haven't logged any expenses yet today. Ready to start tracking?`,
       isAlert: false,
     };
   }
 
   return {
-    text: `Today you've spent $${totalSpent.toFixed(2)} (${pct}% of your $${profile.dailyBudgetLimit} budget). ${remaining > 0 ? `$${remaining.toFixed(2)} remaining.` : "You've hit your daily limit!"} ${biggestCat ? `Your top category is ${biggestCat[0]}.` : ""} What would you like to know?`,
+    text: `Today you've spent ${sym}${totalSpent.toFixed(2)} (${pct}% of your ${sym}${profile.dailyBudgetLimit} budget). ${remaining > 0 ? `${sym}${remaining.toFixed(2)} remaining.` : "You've hit your daily limit!"} ${biggestCat ? `Your top category is ${biggestCat[0]}.` : ""} What would you like to know?`,
     isAlert: parseInt(pct) >= 80,
   };
 }
@@ -135,6 +137,7 @@ export default function AIButler({ messages, expenses, allExpenses, profile, cur
 
   const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
   const remaining = Math.max(0, profile.dailyBudgetLimit - totalSpent);
+  const sym = CURRENCY_SYMBOLS[currency as Currency] || "$";
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -219,7 +222,7 @@ export default function AIButler({ messages, expenses, allExpenses, profile, cur
           <div className="text-[10px] text-[#A1A1AA] mb-2 uppercase tracking-wider">Context loaded</div>
           <div className="grid grid-cols-3 gap-2">
             <div className="text-center">
-              <div className="font-mono-data text-sm font-bold text-white">${totalSpent.toFixed(2)}</div>
+              <div className="font-mono-data text-sm font-bold text-white">{sym}{totalSpent.toFixed(2)}</div>
               <div className="text-[9px] text-[#A1A1AA] mt-0.5">spent</div>
             </div>
             <div className="text-center border-x" style={{ borderColor: "#2A2A32" }}>
@@ -227,7 +230,7 @@ export default function AIButler({ messages, expenses, allExpenses, profile, cur
               <div className="text-[9px] text-[#A1A1AA] mt-0.5">items</div>
             </div>
             <div className="text-center">
-              <div className="font-mono-data text-sm font-bold" style={{ color: "#E9B380" }}>${remaining.toFixed(0)}</div>
+              <div className="font-mono-data text-sm font-bold" style={{ color: "#E9B380" }}>{sym}{remaining.toFixed(0)}</div>
               <div className="text-[9px] text-[#A1A1AA] mt-0.5">left</div>
             </div>
           </div>

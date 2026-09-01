@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { Profile } from "../store";
-import type { Expense, ChatMessage } from "../data";
+import type { Profile, Currency } from "../store";
+import type { Expense, ChatMessage, AppNotification } from "../data";
 import NavBar from "./NavBar";
 import FinanceColumn from "./FinanceColumn";
 import ExpenseColumn from "./ExpenseColumn";
@@ -9,10 +9,12 @@ import { ExpenseRow } from "./ExpenseColumn";
 
 interface Props {
   profile: Profile;
-  currency: "USD" | "PHP";
+  currency: Currency;
   expenses: Expense[];
   allExpenses: Expense[];
   messages: ChatMessage[];
+  activeNotifications: AppNotification[];
+  unreadCount: number;
   onAddExpense: (expense: Expense) => void;
   onDeleteExpense: (id: number) => void;
   onUpdateExpense: (id: number, updates: Partial<Expense>) => void;
@@ -20,6 +22,10 @@ interface Props {
   onCurrencyToggle: () => void;
   onOpenCalendar: () => void;
   onSwitchProfile: () => void;
+  onLogout: () => void;
+  onChangePassword: (newPassword: string) => void;
+  onMarkAllRead: () => void;
+  onDeleteNotification: (id: string) => void;
   onUpdateBudget: (amount: number) => void;
   getWeekTotal: () => number;
   getMonthTotal: () => number;
@@ -33,6 +39,8 @@ export default function Dashboard({
   expenses,
   allExpenses,
   messages,
+  activeNotifications,
+  unreadCount,
   onAddExpense,
   onDeleteExpense,
   onUpdateExpense,
@@ -40,6 +48,10 @@ export default function Dashboard({
   onCurrencyToggle,
   onOpenCalendar,
   onSwitchProfile,
+  onLogout,
+  onChangePassword,
+  onMarkAllRead,
+  onDeleteNotification,
   onUpdateBudget,
   getWeekTotal,
   getMonthTotal,
@@ -79,9 +91,15 @@ export default function Dashboard({
       <NavBar
         profile={profile}
         currency={currency}
+        activeNotifications={activeNotifications}
+        unreadCount={unreadCount}
         onCurrencyToggle={onCurrencyToggle}
         onOpenCalendar={onOpenCalendar}
         onSwitchProfile={onSwitchProfile}
+        onLogout={onLogout}
+        onChangePassword={onChangePassword}
+        onMarkAllRead={onMarkAllRead}
+        onDeleteNotification={onDeleteNotification}
         today={today}
       />
 
@@ -91,6 +109,7 @@ export default function Dashboard({
             <FinanceColumn
               expenses={expenses}
               dailyBudget={profile.dailyBudgetLimit}
+              currency={currency}
               getWeekTotal={getWeekTotal}
               getMonthTotal={getMonthTotal}
               onUpdateBudget={onUpdateBudget}
@@ -124,6 +143,7 @@ export default function Dashboard({
             <FinanceColumn
               expenses={expenses}
               dailyBudget={profile.dailyBudgetLimit}
+              currency={currency}
               getWeekTotal={getWeekTotal}
               getMonthTotal={getMonthTotal}
               onUpdateBudget={onUpdateBudget}

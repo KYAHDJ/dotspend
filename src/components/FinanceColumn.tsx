@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { Expense } from "../data";
 import { CATEGORY_COLORS } from "../data";
+import type { Currency } from "../store";
+import { CURRENCY_SYMBOLS } from "../store";
 
 function donutSlicePath(
   cx: number,
@@ -28,7 +30,15 @@ function donutSlicePath(
   );
 }
 
-function BudgetRing({ spent, total }: { spent: number; total: number }) {
+function BudgetRing({
+  spent,
+  total,
+  symbol,
+}: {
+  spent: number;
+  total: number;
+  symbol: string;
+}) {
   const r = 60;
   const circumference = 2 * Math.PI * r;
   const pct = Math.min(spent / total, 1);
@@ -47,9 +57,9 @@ function BudgetRing({ spent, total }: { spent: number; total: number }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <div className="font-mono-data text-2xl font-bold text-white leading-none">
-          ${spent.toFixed(0)}
+          {symbol}{spent.toFixed(0)}
         </div>
-        <div className="text-[10px] text-[#A1A1AA] mt-1">of ${total}</div>
+        <div className="text-[10px] text-[#A1A1AA] mt-1">of {symbol}{total}</div>
         <div
           className="text-[10px] font-medium mt-1.5 px-2 py-0.5 rounded-full font-mono-data"
           style={{ background: `${ringColor}20`, color: ringColor }}
@@ -64,12 +74,13 @@ function BudgetRing({ spent, total }: { spent: number; total: number }) {
 interface Props {
   expenses: Expense[];
   dailyBudget: number;
+  currency: Currency;
   getWeekTotal: () => number;
   getMonthTotal: () => number;
   onUpdateBudget?: (amount: number) => void;
 }
 
-export default function FinanceColumn({ expenses, dailyBudget, getWeekTotal, getMonthTotal, onUpdateBudget }: Props) {
+export default function FinanceColumn({ expenses, dailyBudget, currency, getWeekTotal, getMonthTotal, onUpdateBudget }: Props) {
   const [hoveredCat, setHoveredCat] = useState<string | null>(null);
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetDraft, setBudgetDraft] = useState(String(dailyBudget));
@@ -90,6 +101,7 @@ export default function FinanceColumn({ expenses, dailyBudget, getWeekTotal, get
   };
 
   const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
+  const sym = CURRENCY_SYMBOLS[currency] || "$";
 
   const catTotals: Record<string, number> = {};
   expenses.forEach((e) => {
@@ -155,16 +167,16 @@ export default function FinanceColumn({ expenses, dailyBudget, getWeekTotal, get
         </div>
 
         <div className="flex items-center gap-5">
-          <BudgetRing spent={totalSpent} total={dailyBudget} />
+          <BudgetRing spent={totalSpent} total={dailyBudget} symbol={sym} />
           <div className="flex-1 space-y-3">
             <div>
               <div className="text-[11px] text-[#A1A1AA] mb-0.5">Spent Today</div>
-              <div className="font-mono-data text-xl font-bold text-white">${totalSpent.toFixed(2)}</div>
+              <div className="font-mono-data text-xl font-bold text-white">{sym}{totalSpent.toFixed(2)}</div>
             </div>
             <div>
               <div className="text-[11px] text-[#A1A1AA] mb-0.5">Remaining</div>
               <div className="font-mono-data text-base font-semibold" style={{ color: budgetBarColor }}>
-                ${Math.max(0, dailyBudget - totalSpent).toFixed(2)}
+                {sym}{Math.max(0, dailyBudget - totalSpent).toFixed(2)}
               </div>
             </div>
             <div>
@@ -196,7 +208,7 @@ export default function FinanceColumn({ expenses, dailyBudget, getWeekTotal, get
                   </button>
                 </div>
               ) : (
-                <div className="font-mono-data text-sm text-white">${dailyBudget.toFixed(0)} / day</div>
+                <div className="font-mono-data text-sm text-white">{sym}{dailyBudget.toFixed(0)} / day</div>
               )}
             </div>
           </div>
@@ -220,9 +232,9 @@ export default function FinanceColumn({ expenses, dailyBudget, getWeekTotal, get
 
         <div className="grid grid-cols-3 gap-3 mt-4">
           {[
-            { label: "This Week", value: `$${weekTotal.toFixed(0)}` },
-            { label: "This Month", value: `$${monthTotal.toFixed(0)}` },
-            { label: "Avg Daily", value: `$${avgDaily.toFixed(0)}` },
+            { label: "This Week", value: `${sym}${weekTotal.toFixed(0)}` },
+            { label: "This Month", value: `${sym}${monthTotal.toFixed(0)}` },
+            { label: "Avg Daily", value: `${sym}${avgDaily.toFixed(0)}` },
           ].map((s) => (
             <div key={s.label} className="rounded-lg p-2.5 text-center" style={{ background: "#0F0F12" }}>
               <div className="font-mono-data text-sm font-bold text-white">{s.value}</div>
@@ -257,7 +269,7 @@ export default function FinanceColumn({ expenses, dailyBudget, getWeekTotal, get
                 />
               ))}
               <text x={CX} y={CY - 8} textAnchor="middle" fill="white" fontSize="18" fontWeight="700" fontFamily="'DM Mono', monospace">
-                ${grandTotal.toFixed(0)}
+                {sym}{grandTotal.toFixed(0)}
               </text>
               <text x={CX} y={CY + 10} textAnchor="middle" fill="#A1A1AA" fontSize="11" fontFamily="'Inter', sans-serif">
                 total today
@@ -290,7 +302,7 @@ export default function FinanceColumn({ expenses, dailyBudget, getWeekTotal, get
               </div>
               <div className="flex items-center gap-3">
                 <span className="font-mono-data text-[11px] text-[#A1A1AA]">{(seg.pct * 100).toFixed(1)}%</span>
-                <span className="font-mono-data text-sm font-medium text-white w-14 text-right">${seg.val.toFixed(2)}</span>
+                <span className="font-mono-data text-sm font-medium text-white w-14 text-right">{sym}{seg.val.toFixed(2)}</span>
               </div>
             </div>
           ))}

@@ -8,7 +8,7 @@ import {
   orderBy,
 } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "./firebase";
-import type { Expense, ChatMessage } from "./data";
+import type { Expense, ChatMessage, AppNotification } from "./data";
 import type { Profile } from "./store";
 
 function guard<T>(fn: () => Promise<T>, fallback: T): () => Promise<T> {
@@ -93,8 +93,36 @@ export async function saveMessage(msg: ChatMessage): Promise<void> {
   }
 }
 
-// ── Bulk save (for initial data seeding) ──
+// ── Notifications ──
 
+export const loadNotifications = guard<AppNotification[]>(async () => {
+  const snap = await getDocs(
+    query(collection(db!, "notifications"), orderBy("createdAt", "desc"))
+  );
+  return snap.docs.map((d) => d.data() as AppNotification);
+}, []);
+
+export async function saveNotification(
+  notification: AppNotification
+): Promise<void> {
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    await setDoc(doc(db, "notifications", notification.id), notification);
+  } catch (err) {
+    console.warn("saveNotification failed:", err);
+  }
+}
+
+export async function deleteNotification(id: string): Promise<void> {
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    await deleteDoc(doc(db, "notifications", id));
+  } catch (err) {
+    console.warn("deleteNotification failed:", err);
+  }
+}
+
+// ── Bulk save (for initial data seeding) ──
 export async function seedData(
   profiles: Profile[],
   expenses: Expense[],
