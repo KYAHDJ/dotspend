@@ -22,8 +22,6 @@ export interface GroqContext {
 const PROXY_URL =
   (import.meta.env.VITE_GROQ_URL as string | undefined) || "/api/chat";
 
-const DEFAULT_MODEL = "llama-3.3-70b-versatile";
-
 /**
  * Compute the structured financial context sent to the serverless proxy, which
  * turns it into a "Financial Butler" system prompt server-side.
@@ -94,7 +92,7 @@ export async function streamChat(opts: {
       user,
       context,
       history: history || [],
-      model: model || DEFAULT_MODEL,
+      model: model,
     }),
   });
 

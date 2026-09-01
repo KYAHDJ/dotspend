@@ -1,7 +1,8 @@
-// Shared server-side Groq proxy logic. Used by the Vercel serverless function
-// (api/chat.ts) and the Vite dev-server middleware (vite.config.ts). This module
-// must only ever run in a Node/server context — never import it from client
-// code. The API key is always passed in as a parameter and never bundled.
+// Shared server-side Groq proxy logic used by the Vite dev-server middleware
+// (vite.config.ts only). The deployed Vercel function (api/chat.ts) carries its
+// own self-contained copy because Vercel compiles each api/* entry in
+// isolation. Never import this from client code; the API key is always passed
+// in as a parameter and never bundled.
 
 export interface FinancialContext {
   profileName: string;
@@ -19,8 +20,8 @@ export interface ProxyMessage {
   content: string;
 }
 
-export const DEFAULT_MODEL = "llama-3.3-70b-versatile";
-export const LIGHT_MODEL = "llama3-8b-8192";
+export const DEFAULT_MODEL = "openai/gpt-oss-120b";
+export const LIGHT_MODEL = "groq/compound-mini";
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 function fmt(n: number | undefined): string {
@@ -94,8 +95,7 @@ export async function streamGroqChat(opts: {
 
 /**
  * Minimal SSE-friendly parser that yields the delta content of each Groq
- * streaming chunk. Falls back to the lighter model when the primary model
- * returns a 404 (unavailable), and passes the fallback stream through.
+ * streaming chunk.
  */
 export async function* streamDeltas(
   upstream: Response
@@ -139,8 +139,9 @@ export async function* streamDeltas(
 }
 
 /**
- * Call Groq with a model fallback chain. Returns the (possibly retried)
- * streaming Response, or null when everything failed.
+ * Call Groq, retrying with a lighter model once if the primary model is
+ * unavailable. Returns the (possibly retried) streaming Response, or null when
+ * everything failed.
  */
 export async function proxyToGroq(opts: {
   apiKey: string;
