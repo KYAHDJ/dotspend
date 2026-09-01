@@ -3,6 +3,8 @@ import type { Expense } from "../data";
 import { CATEGORY_COLORS, CATEGORY_ICONS, CATEGORIES } from "../data";
 import type { Profile, Currency } from "../store";
 import { CURRENCIES, CURRENCY_SYMBOLS } from "../store";
+import Select from "./Select";
+import LocationInput from "./LocationInput";
 
 interface Props {
   expenses: Expense[];
@@ -38,8 +40,8 @@ export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense,
     ? customCategory.trim()
     : category;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!label.trim() || !amount) return;
     if (category === "Other" && !customCategory.trim()) return;
 
@@ -99,18 +101,14 @@ export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense,
           />
 
           <div className="flex gap-2">
-            <select
+            <Select
               value={currency}
-              onChange={(e) => setCurrency(e.target.value as Currency)}
-              className="text-sm px-3 py-2.5 rounded-lg outline-none appearance-none cursor-pointer"
-              style={{ background: "#0F0F12", border: "1px solid #2A2A32", color: "#CBE353", fontFamily: "'DM Mono', monospace", width: "80px" }}
-            >
-              {CURRENCIES.map((c) => (
-                <option key={c} value={c} style={{ background: "#18181C" }}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              onChange={(c) => setCurrency(c as Currency)}
+              options={CURRENCIES.map((c) => ({ value: c }))}
+              width={84}
+              mono
+              accentColor="#CBE353"
+            />
             <input
               type="number"
               value={amount}
@@ -127,21 +125,15 @@ export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense,
 
           <div className="flex gap-2">
             <div className="flex-1 flex gap-2">
-              <select
+              <Select
                 value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value);
-                  if (e.target.value !== "Other") setCustomCategory("");
+                onChange={(v) => {
+                  setCategory(v);
+                  if (v !== "Other") setCustomCategory("");
                 }}
-                className="flex-1 text-sm px-3 py-2.5 rounded-lg outline-none cursor-pointer appearance-none"
-                style={{ background: "#0F0F12", border: "1px solid #2A2A32", color: "white" }}
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c} style={{ background: "#18181C" }}>
-                    {CATEGORY_ICONS[c]} {c}
-                  </option>
-                ))}
-              </select>
+                options={CATEGORIES.map((c) => ({ value: c, icon: CATEGORY_ICONS[c] }))}
+                width="100%"
+              />
               {category === "Other" && (
                 <input
                   type="text"
@@ -155,20 +147,11 @@ export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense,
               )}
             </div>
 
-            <div className="flex-1 relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "#A1A1AA" }} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                <circle cx="12" cy="10" r="3" />
-              </svg>
-              <input
-                type="text"
+            <div className="flex-1">
+              <LocationInput
                 value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="Location"
-                className="w-full text-sm pl-8 pr-3 py-2.5 rounded-lg outline-none placeholder:text-[#A1A1AA] transition-all duration-200"
-                style={{ background: "#0F0F12", border: "1px solid #2A2A32", color: "white" }}
-                onFocus={(e) => { (e.currentTarget as HTMLInputElement).style.borderColor = "#612AD5"; }}
-                onBlur={(e) => { (e.currentTarget as HTMLInputElement).style.borderColor = "#2A2A32"; }}
+                onChange={setLocation}
+                onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
               />
             </div>
           </div>
@@ -287,6 +270,8 @@ export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense,
 
 export function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; onDelete: (id: number) => void; onUpdate: (id: number, updates: Partial<Expense>) => void }) {
   const color = CATEGORY_COLORS[expense.category] || "#A1A1AA";
+  const locationText = expense.location?.trim() || "";
+  const hasLocation = locationText !== "" && locationText.toLowerCase() !== "unknown";
   const [hovered, setHovered] = useState(false);
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(expense.label);
@@ -362,36 +347,26 @@ export function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; 
             className="w-24 text-sm px-3 py-2 rounded-lg outline-none text-white font-mono-data"
             style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
           />
-          <select
+          <Select
             value={currency}
-            onChange={(e) => setCurrency(e.target.value as Currency)}
-            className="w-20 text-sm px-2 py-2 rounded-lg outline-none cursor-pointer text-white"
-            style={{ background: "#0F0F12", border: "1px solid #2A2A32", color: "#CBE353", fontFamily: "'DM Mono', monospace" }}
-          >
-            {CURRENCIES.map((c) => (
-              <option key={c} value={c} style={{ background: "#18181C" }}>
-                {c}
-              </option>
-            ))}
-          </select>
+            onChange={(c) => setCurrency(c as Currency)}
+            options={CURRENCIES.map((c) => ({ value: c }))}
+            width={84}
+            mono
+            accentColor="#CBE353"
+          />
           <div className="flex-1 flex gap-2">
-            <select
+            <Select
               value={category}
-              onChange={(e) => {
-                setCategory(e.target.value);
-                if (e.target.value !== "Other") {
+              onChange={(v) => {
+                setCategory(v);
+                if (v !== "Other") {
                   setCustomCategory("");
                 }
               }}
-              className="flex-1 text-sm px-2 py-2 rounded-lg outline-none cursor-pointer text-white"
-              style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c} style={{ background: "#18181C" }}>
-                  {CATEGORY_ICONS[c]} {c}
-                </option>
-              ))}
-            </select>
+              options={CATEGORIES.map((c) => ({ value: c, icon: CATEGORY_ICONS[c] }))}
+              width="100%"
+            />
             {category === "Other" && (
               <input
                 type="text"
@@ -468,10 +443,21 @@ export function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; 
               <span style={{ color: "#2A2A32" }}>·</span>
             </>
           )}
-          <span className="text-[11px] px-1.5 py-0.5 rounded-md" style={{ background: `${color}18`, color }}>
-            {expense.location.split(",")[0]}
-          </span>
-          <span style={{ color: "#2A2A32" }}>·</span>
+          {hasLocation ? (
+            <>
+              <span className="text-[11px] px-1.5 py-0.5 rounded-md" style={{ background: `${color}18`, color }}>
+                {locationText.split(",")[0]}
+              </span>
+              <span style={{ color: "#2A2A32" }}>·</span>
+            </>
+          ) : (
+            <span className="text-[11px] flex items-center gap-1 text-[#52525B]">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+            </span>
+          )}
           <span className="text-[11px] text-[#A1A1AA]">{expense.member}</span>
         </div>
       </div>
