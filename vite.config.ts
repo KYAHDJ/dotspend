@@ -1,14 +1,21 @@
-import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type HtmlTagDescriptor, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 
 import siteConfiguration from './.figma/make/site.json'
 
+import { assembleMessages, proxyToGroq, streamDeltas } from './src/lib/groqProxy'
+
 // Vite config — https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // .figma/make/deploy-preview passes `--mode development` for cached-preview builds.
   const emitSourcemaps = mode === 'development'
+
+  // Read the .env file server-side (including non-VITE_ vars). The Groq API key
+  // lives only here (and in Vercel's server env); it is never exposed to the
+  // browser bundle.
+  const env = loadEnv(mode, process.cwd(), '')
 
   return {
     base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : '/',
@@ -23,6 +30,7 @@ export default defineConfig(({ mode }) => {
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
+      groqLocalDevProxy(env.GROQ_API_KEY || process.env.GROQ_API_KEY || ''),
     ],
     resolve: {
       alias: {
@@ -41,6 +49,99 @@ export default defineConfig(({ mode }) => {
     },
   }
 })
+
+/**
+ * Dev-only: serves the same POST /api/chat route as the Vercel serverless
+ * function (api/chat.ts) so the Groq AI butler works in the local/dev preview
+ * without a real server. The Groq API key is read from the project's `.env`
+ * file (loaded server-side) and never bundled into the client.
+ *
+ * Production/`vite build` skips this entirely — Vercel runs the function and
+ * provides `GROQ_API_KEY`.
+ */
+function groqLocalDevProxy(apiKey: string): Plugin {
+  return {
+    name: 'groq-local-dev-proxy',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const url = (req.url || '').split('?')[0]
+        if (url !== '/api/chat' || req.method !== 'POST') return next()
+
+        let body = ''
+        for await (const chunk of req) body += chunk
+
+        try {
+          const parsed = JSON.parse(body || '{}') as {
+            model?: string
+            user?: string
+            history?: { role: 'user' | 'assistant'; content: string }[]
+            context?: Parameters<typeof assembleMessages>[0]['context']
+          }
+
+          const user = typeof parsed.user === 'string' ? parsed.user.trim() : ''
+          if (!user) {
+            res.statusCode = 400
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Missing user message' }))
+            return
+          }
+
+          if (!apiKey) {
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(
+              JSON.stringify({
+                error:
+                  'GROQ_API_KEY is not set. Add it to the project .env file so the dev proxy can call Groq.',
+              }),
+            )
+            return
+          }
+
+          const messages = assembleMessages({
+            context: parsed.context,
+            history: parsed.history,
+            user,
+          })
+
+          const { res: upstream, status } = await proxyToGroq({
+            apiKey,
+            model: parsed.model,
+            messages,
+          })
+
+          if (!upstream) {
+            res.statusCode = status || 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Groq request failed' }))
+            return
+          }
+
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'text/event-stream')
+          res.setHeader('Cache-Control', 'no-cache, no-transform')
+          res.setHeader('Connection', 'keep-alive')
+          res.flushHeaders?.()
+
+          try {
+            for await (const chunk of streamDeltas(upstream)) {
+              if (chunk.done) break
+              res.write(`data: ${JSON.stringify({ content: chunk.content })}\n\n`)
+            }
+            res.write('data: [DONE]\n\n')
+          } finally {
+            res.end()
+          }
+        } catch (err) {
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Proxy error' }))
+        }
+      })
+    },
+  }
+}
 
 type FigmaSiteConfiguration = {
   title?: string
