@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { Expense, ChatMessage, AppNotification } from "./data";
 import {
   loadProfiles,
@@ -53,6 +53,10 @@ const TODAY = new Date().toISOString().slice(0, 10);
 // Master admin password used to delete any profile.
 export const ADMIN_PASSWORD =
   import.meta.env.VITE_ADMIN_PASSWORD || "dotspend-admin";
+
+// Default Admin account seeded on first launch.
+export const DEFAULT_ADMIN_PASSWORD = "19621960";
+export const DEFAULT_ADMIN_COLOR = "#612AD5";
 
 // Currency symbols used for dynamic formatting across the dashboard.
 export const CURRENCY_SYMBOLS: Record<Currency, string> = {
@@ -188,6 +192,7 @@ export function useStore() {
   );
   const [loading, setLoading] = useState(true);
   const [authedProfiles, setAuthedProfiles] = useState<string[]>(loadAuthed);
+  const adminSeededRef = useRef(false);
 
   // Load from Firestore on mount with timeout
   useEffect(() => {
@@ -437,6 +442,26 @@ export function useStore() {
     },
     []
   );
+
+  // Seed a default Admin profile (with the fixed, hashed password) on first
+  // launch when no profiles exist yet.
+  useEffect(() => {
+    if (loading || adminSeededRef.current) return;
+    if (state.profiles.length > 0) {
+      adminSeededRef.current = true;
+      return;
+    }
+    const hasPendingAdmin = state.profiles.some((p) => p.name === "Admin");
+    if (hasPendingAdmin) {
+      adminSeededRef.current = true;
+      return;
+    }
+    adminSeededRef.current = true;
+    addProfile("Admin", DEFAULT_ADMIN_COLOR, DEFAULT_ADMIN_PASSWORD).catch(
+      console.warn
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, state.profiles.length]);
 
   const updateProfile = useCallback(
     async (id: string, updates: Partial<Profile>) => {

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import type { Profile, Currency } from "../store";
 import type { AppNotification } from "../data";
 import { CURRENCY_SYMBOLS } from "../store";
+import PasswordInput from "./PasswordInput";
 
 const TYPE_COLORS: Record<string, string> = {
   budget: "#CBE353",
@@ -409,23 +410,21 @@ export default function NavBar({
             <p className="text-[#A1A1AA] text-xs mb-4">
               Set a new password for {profile.name}
             </p>
-            <input
-              type="password"
+            <PasswordInput
               value={newPw}
-              onChange={(e) => setNewPw(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submitPassword()}
+              onChange={setNewPw}
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && submitPassword()}
               placeholder="New password"
               autoFocus
-              className="w-full text-sm px-3 py-2.5 rounded-lg outline-none text-white placeholder:text-[#A1A1AA] mb-2.5"
+              className="text-sm px-3 py-2.5 rounded-lg outline-none text-white placeholder:text-[#A1A1AA] mb-0"
               style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
             />
-            <input
-              type="password"
+            <PasswordInput
               value={confirmPw}
-              onChange={(e) => setConfirmPw(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submitPassword()}
+              onChange={setConfirmPw}
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && submitPassword()}
               placeholder="Confirm new password"
-              className="w-full text-sm px-3 py-2.5 rounded-lg outline-none text-white placeholder:text-[#A1A1AA] mb-3"
+              className="text-sm px-3 py-2.5 rounded-lg outline-none text-white placeholder:text-[#A1A1AA] mb-0 mt-2"
               style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
             />
             {pwError && <p className="text-[#FF6B6B] text-xs mb-3">{pwError}</p>}

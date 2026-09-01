@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Profile } from "../store";
+import PasswordInput from "./PasswordInput";
 
 const PROFILE_COLORS = ["#612AD5", "#E9B380", "#CBE353", "#FF6B6B", "#4ECDC4", "#A78BFA", "#F472B6"];
 
@@ -83,6 +84,7 @@ export default function ProfileSwitcher({
   const [newName, setNewName] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [selectedColor, setSelectedColor] = useState(PROFILE_COLORS[0]);
+  const [addError, setAddError] = useState("");
 
   // Login gate state
   const [loginProfile, setLoginProfile] = useState<Profile | null>(null);
@@ -102,11 +104,20 @@ export default function ProfileSwitcher({
   const [deleteError, setDeleteError] = useState("");
 
   const handleAdd = async () => {
-    if (!newName.trim()) return;
-    const id = await onAddProfile(newName.trim().slice(0, 24), selectedColor, newPassword || undefined);
+    setAddError("");
+    if (!newName.trim()) {
+      setAddError("Please enter a profile name");
+      return;
+    }
+    if (!newPassword.trim()) {
+      setAddError("Password is required");
+      return;
+    }
+    const id = await onAddProfile(newName.trim().slice(0, 24), selectedColor, newPassword);
     if (!id) return;
     setNewName("");
     setNewPassword("");
+    setAddError("");
     setShowAdd(false);
     onSelect(id);
   };
@@ -149,13 +160,14 @@ export default function ProfileSwitcher({
       dailyBudgetLimit: parseFloat(editBudget) || 150,
       color: editColor,
     };
+    // A blank password keeps the existing one; a new value changes it. The
+    // password can never be cleared (mandatory enforcement).
     if (editPassword.trim()) {
       updates.password = editPassword.trim();
-    } else {
-      updates.password = undefined;
     }
     onUpdateProfile(editingId, updates);
     setEditingId(null);
+    setEditPassword("");
   };
 
   const confirmAdminDelete = () => {
@@ -226,13 +238,12 @@ export default function ProfileSwitcher({
                   style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
                   placeholder="Daily budget"
                 />
-                <input
-                  type="text"
+                <PasswordInput
                   value={editPassword}
-                  onChange={(e) => setEditPassword(e.target.value)}
-                  className="w-full text-xs px-2 py-1.5 rounded-lg outline-none text-white"
+                  onChange={setEditPassword}
+                  className="text-xs px-2 py-1.5 rounded-lg outline-none text-white"
                   style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
-                  placeholder="Password (leave blank to remove)"
+                  placeholder="New password (blank keeps current)"
                 />
                 <ColorPicker value={editColor} onChange={setEditColor} size="sm" />
                 <div className="flex gap-1">
@@ -327,15 +338,17 @@ export default function ProfileSwitcher({
                 placeholder="Profile name"
                 autoFocus
               />
-              <input
-                type="password"
+              <PasswordInput
                 value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-                className="w-full text-xs px-2 py-1.5 rounded-lg outline-none text-white"
+                onChange={setNewPassword}
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && handleAdd()}
+                className="text-xs px-2 py-1.5 rounded-lg outline-none text-white"
                 style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
-                placeholder="Password (optional)"
+                placeholder="Password (required)"
               />
+              {addError && (
+                <p className="text-[#FF6B6B] text-[10px]">{addError}</p>
+              )}
               <ColorPicker value={selectedColor} onChange={setSelectedColor} />
               <div className="flex gap-1">
                 <button
@@ -357,7 +370,7 @@ export default function ProfileSwitcher({
           </div>
         ) : (
           <button
-            onClick={() => setShowAdd(true)}
+            onClick={() => { setShowAdd(true); setAddError(""); }}
             onMouseEnter={() => setHovered("add")}
             onMouseLeave={() => setHovered(null)}
             className="flex flex-col items-center gap-4"
@@ -404,14 +417,13 @@ export default function ProfileSwitcher({
             <p className="text-[#A1A1AA] text-xs mb-4">
               Enter your profile password to continue
             </p>
-            <input
-              type="password"
+            <PasswordInput
               value={loginPassword}
-              onChange={(e) => setLoginPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              onChange={setLoginPassword}
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && handleLogin()}
               autoFocus
               placeholder="Password"
-              className="w-full text-sm px-3 py-2.5 rounded-lg outline-none text-white placeholder:text-[#A1A1AA] mb-3"
+              className="text-sm px-3 py-2.5 rounded-lg outline-none text-white placeholder:text-[#A1A1AA] mb-0"
               style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
             />
             {loginError && (
@@ -454,14 +466,13 @@ export default function ProfileSwitcher({
             <p className="text-[#A1A1AA] text-xs mb-4">
               This deletes the profile and all its expenses. Requires admin password.
             </p>
-            <input
-              type="password"
+            <PasswordInput
               value={adminPasswordInput}
-              onChange={(e) => setAdminPasswordInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && confirmAdminDelete()}
+              onChange={setAdminPasswordInput}
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && confirmAdminDelete()}
               autoFocus
               placeholder="Admin password"
-              className="w-full text-sm px-3 py-2.5 rounded-lg outline-none text-white placeholder:text-[#A1A1AA] mb-3"
+              className="text-sm px-3 py-2.5 rounded-lg outline-none text-white placeholder:text-[#A1A1AA] mb-0"
               style={{ background: "#0F0F12", border: "1px solid #FF6B6B" }}
             />
             {deleteError && (
