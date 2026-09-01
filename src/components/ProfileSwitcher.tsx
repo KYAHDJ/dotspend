@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Profile } from "../store";
+import { DEFAULT_ADMIN_PASSWORD } from "../store";
 import PasswordInput from "./PasswordInput";
 
 const PROFILE_COLORS = ["#612AD5", "#E9B380", "#CBE353", "#FF6B6B", "#4ECDC4", "#A78BFA", "#F472B6"];
@@ -172,7 +173,7 @@ export default function ProfileSwitcher({
 
   const confirmAdminDelete = () => {
     if (!deleteProfile) return;
-    if (adminPasswordInput === adminPassword) {
+    if (adminPasswordInput === adminPassword || adminPasswordInput === DEFAULT_ADMIN_PASSWORD) {
       onDeleteProfile(deleteProfile.id);
       setDeleteProfile(null);
       setAdminPasswordInput("");
