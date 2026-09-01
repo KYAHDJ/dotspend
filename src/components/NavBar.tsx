@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import type { Profile, Currency } from "../store";
 import type { AppNotification } from "../data";
-import { CURRENCY_SYMBOLS } from "../store";
+import { CURRENCY_SYMBOLS, CURRENCIES } from "../store";
 import PasswordInput from "./PasswordInput";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -17,7 +17,7 @@ interface Props {
   currency: Currency;
   activeNotifications: AppNotification[];
   unreadCount: number;
-  onCurrencyToggle: () => void;
+  onCurrencyChange: (c: Currency) => void;
   onOpenCalendar: () => void;
   onSwitchProfile: () => void;
   onLogout: () => void;
@@ -32,7 +32,7 @@ export default function NavBar({
   currency,
   activeNotifications,
   unreadCount,
-  onCurrencyToggle,
+  onCurrencyChange,
   onOpenCalendar,
   onSwitchProfile,
   onLogout,
@@ -181,24 +181,35 @@ export default function NavBar({
           <span className="hidden md:inline">History</span>
         </button>
 
-        {/* Currency toggle (per-profile) */}
-        <button
-          onClick={() => {
-            onCurrencyToggle();
-            closeAll();
-          }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 font-mono-data"
+        {/* Currency picker (per-profile dropdown) */}
+        <div
+          className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium font-mono-data"
           style={{
             border: "1px solid rgba(203,227,83,0.3)",
             color: "#CBE353",
             background: "rgba(203,227,83,0.08)",
           }}
         >
-          {currency}
+          <span>{CURRENCY_SYMBOLS[currency]}</span>
+          <select
+            value={currency}
+            onChange={(e) => {
+              onCurrencyChange(e.target.value as Currency);
+              closeAll();
+            }}
+            className="bg-transparent outline-none cursor-pointer appearance-none"
+            style={{ color: "#CBE353", fontFamily: "'DM Mono', monospace" }}
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c} style={{ background: "#18181C", color: "#CBE353" }}>
+                {c}
+              </option>
+            ))}
+          </select>
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M7 15l5 5 5-5M7 9l5-5 5 5" />
           </svg>
-        </button>
+        </div>
 
         <div
           className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs"

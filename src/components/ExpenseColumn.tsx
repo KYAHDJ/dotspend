@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { Expense } from "../data";
 import { CATEGORY_COLORS, CATEGORY_ICONS, CATEGORIES } from "../data";
-import type { Profile } from "../store";
+import type { Profile, Currency } from "../store";
+import { CURRENCIES, CURRENCY_SYMBOLS } from "../store";
 
 interface Props {
   expenses: Expense[];
@@ -14,17 +15,33 @@ interface Props {
 export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense, onUpdateExpense, profile }: Props) {
   const [label, setLabel] = useState("");
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState<Currency>(profile.currency || "USD");
   const [category, setCategory] = useState("Food");
+  const [customCategory, setCustomCategory] = useState("");
   const [location, setLocation] = useState("");
   const [member, setMember] = useState(profile.name);
   const [dragging, setDragging] = useState(false);
   const [receipt, setReceipt] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Sync expense form currency with profile currency when profile or its
+  // currency changes (the top-right dropdown updates the active profile).
+  const [prevProfileKey, setPrevProfileKey] = useState(profile.id + "|" + profile.currency);
+  const currentProfileKey = profile.id + "|" + (profile.currency || "USD");
+  if (currentProfileKey !== prevProfileKey) {
+    setPrevProfileKey(currentProfileKey);
+    setCurrency(profile.currency || "USD");
+    setMember(profile.name);
+  }
+
+  const effectiveCategory = category === "Other" && customCategory.trim()
+    ? customCategory.trim()
+    : category;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!label.trim() || !amount) return;
+    if (category === "Other" && !customCategory.trim()) return;
 
     setSubmitting(true);
     const timeStr = new Date().toLocaleTimeString("en-US", {
@@ -40,7 +57,7 @@ export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense,
         label: label.trim(),
         amount: parseFloat(amount),
         currency,
-        category,
+        category: effectiveCategory,
         time: timeStr,
         location: location.trim() || "Unknown",
         member: memberName,
@@ -52,6 +69,7 @@ export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense,
       setLabel("");
       setAmount("");
       setLocation("");
+      setCustomCategory("");
       setReceipt(null);
       setSubmitting(false);
     }, 400);
@@ -83,14 +101,15 @@ export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense,
           <div className="flex gap-2">
             <select
               value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
+              onChange={(e) => setCurrency(e.target.value as Currency)}
               className="text-sm px-3 py-2.5 rounded-lg outline-none appearance-none cursor-pointer"
               style={{ background: "#0F0F12", border: "1px solid #2A2A32", color: "#CBE353", fontFamily: "'DM Mono', monospace", width: "80px" }}
             >
-              <option value="USD">USD</option>
-              <option value="PHP">PHP</option>
-              <option value="EUR">EUR</option>
-              <option value="GBP">GBP</option>
+              {CURRENCIES.map((c) => (
+                <option key={c} value={c} style={{ background: "#18181C" }}>
+                  {c}
+                </option>
+              ))}
             </select>
             <input
               type="number"
@@ -107,18 +126,34 @@ export default function ExpenseColumn({ expenses, onAddExpense, onDeleteExpense,
           </div>
 
           <div className="flex gap-2">
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="flex-1 text-sm px-3 py-2.5 rounded-lg outline-none cursor-pointer appearance-none"
-              style={{ background: "#0F0F12", border: "1px solid #2A2A32", color: "white" }}
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c} style={{ background: "#18181C" }}>
-                  {CATEGORY_ICONS[c]} {c}
-                </option>
-              ))}
-            </select>
+            <div className="flex-1 flex gap-2">
+              <select
+                value={category}
+                onChange={(e) => {
+                  setCategory(e.target.value);
+                  if (e.target.value !== "Other") setCustomCategory("");
+                }}
+                className="flex-1 text-sm px-3 py-2.5 rounded-lg outline-none cursor-pointer appearance-none"
+                style={{ background: "#0F0F12", border: "1px solid #2A2A32", color: "white" }}
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c} style={{ background: "#18181C" }}>
+                    {CATEGORY_ICONS[c]} {c}
+                  </option>
+                ))}
+              </select>
+              {category === "Other" && (
+                <input
+                  type="text"
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                  placeholder="Enter category name"
+                  className="flex-1 text-sm px-3 py-2.5 rounded-lg outline-none transition-all duration-200 placeholder:text-[#A1A1AA]"
+                  style={{ background: "#0F0F12", border: "1px solid #612AD5", color: "white" }}
+                  autoFocus
+                />
+              )}
+            </div>
 
             <div className="flex-1 relative">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "#A1A1AA" }} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -257,29 +292,43 @@ export function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; 
   const [label, setLabel] = useState(expense.label);
   const [amount, setAmount] = useState(String(expense.amount));
   const [category, setCategory] = useState(expense.category);
+  const [customCategory, setCustomCategory] = useState(
+    !Object.keys(CATEGORY_COLORS).includes(expense.category) ? expense.category : ""
+  );
   const [location, setLocation] = useState(expense.location);
-  const [currency, setCurrency] = useState(expense.currency);
+  const [currency, setCurrency] = useState<Currency>(expense.currency as Currency);
   const [member, setMember] = useState(expense.member);
 
   const startEdit = () => {
     setLabel(expense.label);
     setAmount(String(expense.amount));
     setCategory(expense.category);
+    setCustomCategory(
+      !Object.keys(CATEGORY_COLORS).includes(expense.category) ? expense.category : ""
+    );
     setLocation(expense.location);
-    setCurrency(expense.currency);
+    setCurrency(expense.currency as Currency);
     setMember(expense.member);
     setEditing(true);
   };
+
+  const effectiveEditCategory = category === "Other" && customCategory.trim()
+    ? customCategory.trim()
+    : category;
 
   const saveEdit = () => {
     if (!label.trim()) {
       setEditing(false);
       return;
     }
+    if (category === "Other" && !customCategory.trim()) {
+      setEditing(false);
+      return;
+    }
     const updates: Partial<Expense> = { label: label.trim() };
     const parsed = parseFloat(amount);
     if (!isNaN(parsed) && parsed > 0) updates.amount = parsed;
-    if (category !== expense.category) updates.category = category;
+    updates.category = effectiveEditCategory;
     const loc = location.trim();
     const memberName = member.trim();
     updates.location = loc || "Unknown";
@@ -315,27 +364,46 @@ export function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; 
           />
           <select
             value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
+            onChange={(e) => setCurrency(e.target.value as Currency)}
             className="w-20 text-sm px-2 py-2 rounded-lg outline-none cursor-pointer text-white"
             style={{ background: "#0F0F12", border: "1px solid #2A2A32", color: "#CBE353", fontFamily: "'DM Mono', monospace" }}
           >
-            <option value="USD">USD</option>
-            <option value="PHP">PHP</option>
-            <option value="EUR">EUR</option>
-            <option value="GBP">GBP</option>
-          </select>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="flex-1 text-sm px-3 py-2 rounded-lg outline-none cursor-pointer text-white"
-            style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
-          >
-            {CATEGORIES.map((c) => (
+            {CURRENCIES.map((c) => (
               <option key={c} value={c} style={{ background: "#18181C" }}>
-                {CATEGORY_ICONS[c]} {c}
+                {c}
               </option>
             ))}
           </select>
+          <div className="flex-1 flex gap-2">
+            <select
+              value={category}
+              onChange={(e) => {
+                setCategory(e.target.value);
+                if (e.target.value !== "Other") {
+                  setCustomCategory("");
+                }
+              }}
+              className="flex-1 text-sm px-2 py-2 rounded-lg outline-none cursor-pointer text-white"
+              style={{ background: "#0F0F12", border: "1px solid #2A2A32" }}
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c} style={{ background: "#18181C" }}>
+                  {CATEGORY_ICONS[c]} {c}
+                </option>
+              ))}
+            </select>
+            {category === "Other" && (
+              <input
+                type="text"
+                value={customCategory}
+                onChange={(e) => setCustomCategory(e.target.value)}
+                placeholder="Category name"
+                className="flex-1 text-sm px-2 py-2 rounded-lg outline-none text-white"
+                style={{ background: "#0F0F12", border: "1px solid #612AD5" }}
+                autoFocus
+              />
+            )}
+          </div>
         </div>
         <input
           type="text"
@@ -392,6 +460,14 @@ export function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; 
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
           <span className="text-[11px] text-[#A1A1AA]">{expense.time}</span>
           <span style={{ color: "#2A2A32" }}>·</span>
+          {!Object.keys(CATEGORY_COLORS).includes(expense.category) && (
+            <>
+              <span className="text-[11px] px-1.5 py-0.5 rounded-md" style={{ background: `${color}18`, color }}>
+                {expense.category}
+              </span>
+              <span style={{ color: "#2A2A32" }}>·</span>
+            </>
+          )}
           <span className="text-[11px] px-1.5 py-0.5 rounded-md" style={{ background: `${color}18`, color }}>
             {expense.location.split(",")[0]}
           </span>
@@ -402,7 +478,7 @@ export function ExpenseRow({ expense, onDelete, onUpdate }: { expense: Expense; 
 
       <div className="flex flex-col items-end gap-1.5 shrink-0">
         <span className="font-mono-data text-sm font-semibold text-white">
-          {expense.currency === "PHP" ? "₱" : "$"}{expense.amount.toFixed(2)}
+          {CURRENCY_SYMBOLS[expense.currency as Currency] || "$"}{expense.amount.toFixed(2)}
         </span>
         <div className="flex items-center gap-1.5">
           <div

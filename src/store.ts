@@ -16,7 +16,7 @@ import {
 } from "./firestore";
 import { isFirebaseConfigured } from "./firebase";
 
-export type Currency = "USD" | "PHP";
+export type Currency = "USD" | "PHP" | "EUR" | "GBP";
 
 export interface PasswordHash {
   salt: string;
@@ -49,6 +49,10 @@ const AUTHED_KEY = "dotspend_authed_profiles";
 const VERSION_KEY = "dotspend_state_version";
 const STATE_VERSION = 3;
 const TODAY = new Date().toISOString().slice(0, 10);
+// Set once the very first time the default Admin is seeded, so it is only
+// created on a genuinely fresh install — never re-seeded after the user deletes
+// every profile on purpose.
+const SEEDED_FLAG = "dotspend_seeded";
 
 // Master admin password used to delete any profile.
 export const ADMIN_PASSWORD =
@@ -62,7 +66,12 @@ export const DEFAULT_ADMIN_COLOR = "#612AD5";
 export const CURRENCY_SYMBOLS: Record<Currency, string> = {
   USD: "$",
   PHP: "₱",
+  EUR: "€",
+  GBP: "£",
 };
+
+// Supported currencies (used to render the currency picker dropdowns).
+export const CURRENCIES: Currency[] = ["USD", "PHP", "EUR", "GBP"];
 
 export function formatMoney(amount: number, currency: Currency): string {
   const symbol = CURRENCY_SYMBOLS[currency] || "$";
@@ -118,7 +127,10 @@ function getLocalState(): AppState | null {
       if (parsed.profiles && parsed.expenses) {
         const profiles: Profile[] = parsed.profiles.map((p) => ({
           ...p,
-          currency: p.currency === "PHP" ? ("PHP" as Currency) : ("USD" as Currency),
+          currency:
+            p.currency && p.currency in CURRENCY_SYMBOLS
+              ? (p.currency as Currency)
+              : "USD",
         }));
         const notifications = Array.isArray(parsed.notifications)
           ? parsed.notifications
@@ -444,19 +456,32 @@ export function useStore() {
   );
 
   // Seed a default Admin profile (with the fixed, hashed password) on first
-  // launch when no profiles exist yet.
+  // launch only. Once seeded (or once the app has been initialized), never
+  // auto-create profiles again, so the user can delete every profile and leave
+  // the app empty.
   useEffect(() => {
     if (loading || adminSeededRef.current) return;
-    if (state.profiles.length > 0) {
-      adminSeededRef.current = true;
-      return;
-    }
-    const hasPendingAdmin = state.profiles.some((p) => p.name === "Admin");
-    if (hasPendingAdmin) {
-      adminSeededRef.current = true;
-      return;
-    }
     adminSeededRef.current = true;
+    if (state.profiles.length > 0) {
+      try {
+        localStorage.setItem(SEEDED_FLAG, "1");
+      } catch { /* ignore */ }
+      return;
+    }
+    let alreadySeeded = false;
+    try {
+      alreadySeeded = localStorage.getItem(SEEDED_FLAG) === "1";
+    } catch { /* ignore */ }
+    if (alreadySeeded) return;
+    if (state.profiles.some((p) => p.name === "Admin")) {
+      try {
+        localStorage.setItem(SEEDED_FLAG, "1");
+      } catch { /* ignore */ }
+      return;
+    }
+    try {
+      localStorage.setItem(SEEDED_FLAG, "1");
+    } catch { /* ignore */ }
     addProfile("Admin", DEFAULT_ADMIN_COLOR, DEFAULT_ADMIN_PASSWORD).catch(
       console.warn
     );
@@ -496,11 +521,11 @@ export function useStore() {
   const deleteProfileFn = useCallback((id: string) => {
     setState((s) => {
       const remaining = s.profiles.filter((p) => p.id !== id);
-      if (remaining.length === 0) return s;
       const newState: AppState = {
         ...s,
         profiles: remaining,
-        activeProfileId: s.activeProfileId === id ? remaining[0].id : s.activeProfileId,
+        activeProfileId: s.activeProfileId === id ? (remaining[0]?.id || "") : s.activeProfileId,
+        currency: remaining.find((p) => p.id === s.activeProfileId)?.currency || "USD",
         expenses: s.expenses.filter((e) => e.profileId !== id),
         messages: s.messages.filter((m) => m.profileId !== id),
         notifications: s.notifications.filter((n) => n.profileId !== id),

@@ -106,9 +106,7 @@ export default function App() {
             onDeleteExpense={store.deleteExpense}
             onUpdateExpense={store.updateExpense}
             onAddMessage={store.addMessage}
-            onCurrencyToggle={() =>
-              store.setCurrency(store.currency === "USD" ? "PHP" : "USD")
-            }
+            onCurrencyChange={store.setCurrency}
             onOpenCalendar={() => setShowCalendar(true)}
             onSwitchProfile={handleSwitchProfile}
             onLogout={handleLogout}

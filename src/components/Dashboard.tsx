@@ -19,7 +19,7 @@ interface Props {
   onDeleteExpense: (id: number) => void;
   onUpdateExpense: (id: number, updates: Partial<Expense>) => void;
   onAddMessage: (msg: ChatMessage) => void;
-  onCurrencyToggle: () => void;
+  onCurrencyChange: (c: Currency) => void;
   onOpenCalendar: () => void;
   onSwitchProfile: () => void;
   onLogout: () => void;
@@ -45,7 +45,7 @@ export default function Dashboard({
   onDeleteExpense,
   onUpdateExpense,
   onAddMessage,
-  onCurrencyToggle,
+  onCurrencyChange,
   onOpenCalendar,
   onSwitchProfile,
   onLogout,
@@ -93,7 +93,7 @@ export default function Dashboard({
         currency={currency}
         activeNotifications={activeNotifications}
         unreadCount={unreadCount}
-        onCurrencyToggle={onCurrencyToggle}
+        onCurrencyChange={onCurrencyChange}
         onOpenCalendar={onOpenCalendar}
         onSwitchProfile={onSwitchProfile}
         onLogout={onLogout}
