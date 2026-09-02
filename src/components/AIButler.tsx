@@ -57,7 +57,7 @@ function generateAIResponse(
   // Budget warnings
   if (pct && parseInt(pct) >= 90) {
     return {
-      text: `Heads up! You've spent ${pct}% of your ${sym}${profile.dailyBudgetLimit} budget today. Only ${sym}${remaining.toFixed(2)} left. Maybe skip that extra purchase and save it for tomorrow?`,
+      text: `Heads up, chief! 🚨 You've used ${pct}% of your ${sym}${profile.dailyBudgetLimit} budget today with only ${sym}${remaining.toFixed(2)} to go. Future-you will thank present-you if you give that extra purchase a rain check 😅`,
       isAlert: true,
     };
   }
@@ -67,14 +67,14 @@ function generateAIResponse(
     const foodBudget = profile.dailyBudgetLimit * 0.3;
     const foodLeft = Math.max(0, foodBudget - foodSpent);
     return {
-      text: `You've spent ${sym}${foodSpent.toFixed(2)} on food so far today. With ${sym}${foodLeft.toFixed(2)} left in your food budget, here are some ideas:\n\n• Local deli sandwich: ~${sym}8-12\n• Rice bowl spot: ~${sym}10-14\n• Home cooking: ~${sym}5-8\n\nWant me to find something specific in your area?`,
+      text: `You've spent ${sym}${foodSpent.toFixed(2)} on food so far today 🍽️ With ${sym}${foodLeft.toFixed(2)} left in your food budget, here are some ideas:\n\n• Local deli sandwich: ~${sym}8-12\n• Rice bowl spot: ~${sym}10-14\n• Home cooking: ~${sym}5-8\n\nWant me to find something specific in your area? 🍔`,
       isAlert: false,
     };
   }
 
   if (q.includes("weekly") || q.includes("trend") || q.includes("week")) {
     return {
-      text: `Here's your weekly snapshot:\n\n• This week: ${sym}${thisWeek.toFixed(2)}\n• Budget: ${sym}${(profile.dailyBudgetLimit * 7).toFixed(0)}\n• Daily avg: ${sym}${(thisWeek / 7).toFixed(2)}\n\n${biggestCat ? `Your top category is ${biggestCat[0]} at ${sym}${biggestCat[1].toFixed(2)}.` : ""} ${remaining < 30 ? "You're running low today!" : "You're doing well so far."}`,
+      text: `Here's your weekly snapshot 📊\n\n• This week: ${sym}${thisWeek.toFixed(2)}\n• Budget: ${sym}${(profile.dailyBudgetLimit * 7).toFixed(0)}\n• Daily avg: ${sym}${(thisWeek / 7).toFixed(2)}\n\n${biggestCat ? `Your top category is ${biggestCat[0]} at ${sym}${biggestCat[1].toFixed(2)}.` : ""} ${remaining < 30 ? "Getting tight today — we've got this 💪" : "You're doing great so far 👏"}`,
       isAlert: false,
     };
   }
@@ -96,12 +96,12 @@ function generateAIResponse(
       const isMost = q.includes("most expensive") || q.includes("biggest") || q.includes("largest") || q.includes("expensive");
       if (isMost) {
         return {
-          text: `Your most expensive expense ever is ${topEver.label} at ${sym}${topEver.amount.toFixed(2)} on ${topEver.date} (${topEver.category}).`,
-          isAlert: false,
-        };
-      }
-      return {
-        text: `All-time you have spent ${sym}${allTimeTotal.toFixed(2)} across ${profileExpenses.length} expense(s). Your biggest single expense was ${topEver.label} at ${sym}${topEver.amount.toFixed(2)} on ${topEver.date}.`,
+        text: `Your most expensive expense ever is ${topEver.label} at ${sym}${topEver.amount.toFixed(2)} on ${topEver.date} (${topEver.category}). 🔥`,
+        isAlert: false,
+      };
+    }
+    return {
+      text: `All-time you've spent ${sym}${allTimeTotal.toFixed(2)} across ${profileExpenses.length} expense(s). Your biggest single expense was ${topEver.label} at ${sym}${topEver.amount.toFixed(2)} on ${topEver.date}. 📈`,
         isAlert: false,
       };
     }
@@ -124,8 +124,8 @@ function generateAIResponse(
   }
 
   if (q.includes("tip") || q.includes("advice") || q.includes("suggest")) {
-    return {
-      text: `Here are some budget-friendly tips:\n\n1. Set a daily food limit of ${sym}${(profile.dailyBudgetLimit * 0.3).toFixed(0)} (30% of budget)\n2. Walk or use public transit instead of rideshare when possible\n3. Try the 24-hour rule: wait a day before non-essential purchases\n4. Track every expense — you're already doing great with that!\n\nYour remaining budget today is ${sym}${remaining.toFixed(2)}.`,
+return {
+      text: `Here are some budget-friendly tips 💡\n\n1. Set a daily food limit of ${sym}${(profile.dailyBudgetLimit * 0.3).toFixed(0)} (30% of budget)\n2. Walk or use public transit instead of rideshare when possible\n3. Try the 24-hour rule: wait a day before non-essential purchases\n4. Track every expense — you're already doing great with that! 🎯\n\nYour remaining budget today is ${sym}${remaining.toFixed(2)}.`,
       isAlert: false,
     };
   }
@@ -166,6 +166,48 @@ function generateAIResponse(
   };
 }
 
+function makeGreeting(
+  profile: Profile,
+  spentToday: number,
+  remaining: number,
+  sym: string,
+  itemCount: number
+): ChatMessage {
+  const hour = new Date().getHours();
+  const firstName = profile.name.trim().split(" ")[0];
+
+  let opener = "Hey there! 👋";
+  if (hour < 12) opener = "Rise and shine, " + firstName + "! ☀️";
+  else if (hour < 18) opener = "Hey " + firstName + "! 👋";
+  else opener = "Good evening, " + firstName + "! 🌙";
+
+  let status: string;
+  if (itemCount === 0) {
+    status = `Nothing tracked yet today — we're starting from a clean slate 🌱 Ready when you are!`;
+  } else {
+    const pct = Math.min(100, Math.round((spentToday / profile.dailyBudgetLimit) * 100));
+    status =
+      pct >= 90
+        ? `We're at ${sym}${spentToday.toFixed(2)} (${pct}% of budget) with ${sym}${remaining.toFixed(0)} left — let's keep it steady 😅`
+        : `So far we're at ${sym}${spentToday.toFixed(2)} with ${sym}${remaining.toFixed(0)} left in the tank 💪`;
+  }
+
+  const text = `${opener} I'm your DotSpend butler — here to keep your money in check and your mood up. ${status} What are we tackling today?`;
+
+  return {
+    id: Date.now(),
+    from: "ai",
+    text,
+    time: new Date().toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }),
+    date: new Date().toISOString().slice(0, 10),
+    profileId: profile.id,
+  };
+}
+
 interface Props {
   messages: ChatMessage[];
   expenses: Expense[];
@@ -190,6 +232,22 @@ export default function AIButler({ messages, expenses, allExpenses, profile, cur
   // a "new chat" with the quick prompts visible again.
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayMessages = messages.filter((m) => m.date === todayStr);
+
+  // Greet the user once per profile per day so the butler always feels alive,
+  // even before the first question. Guarded with localStorage so the desktop +
+  // mobile instances of this component fire only one greeting.
+  useEffect(() => {
+    if (isTyping || todayMessages.length > 0) return;
+    const greetedKey = `dotspend_greeted_${profile.id}_${todayStr}`;
+    try {
+      if (localStorage.getItem(greetedKey)) return;
+      localStorage.setItem(greetedKey, "1");
+    } catch {
+      /* storage unavailable — greet anyway */
+    }
+    onSendMessage(makeGreeting(profile, totalSpent, remaining, sym, expenses.length));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayMessages.length, profile.id, todayStr]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
