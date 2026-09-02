@@ -12,7 +12,6 @@ import {
   loadNotifications,
   saveNotification,
   deleteNotification as deleteNotificationDB,
-  clearDB,
 } from "./firestore";
 import { isFirebaseConfigured } from "./firebase";
 import { serializeState, syncMemoryFile } from "./lib/memory";
@@ -178,16 +177,6 @@ function saveAuthed(ids: string[]) {
   } catch { /* ignore */ }
 }
 
-// Detect a fresh-start (version bump) once at module scope, so we can both
-// wipe Firestore and reset localStorage consistently on first render.
-const IS_VERSION_MISMATCH = (() => {
-  try {
-    return localStorage.getItem(VERSION_KEY) !== String(STATE_VERSION);
-  } catch {
-    return false;
-  }
-})();
-
 function getDefaultState(): AppState {
   return {
     profiles: [],
@@ -220,11 +209,6 @@ export function useStore() {
 
     (async () => {
       try {
-        if (IS_VERSION_MISMATCH) {
-          // Do a best-effort clear so old default profiles don't reappear.
-          withTimeout(clearDB(), 6000, undefined).catch(() => {});
-        }
-
         if (!isFirebaseConfigured) {
           if (!cancelled) setLoading(false);
           return;
