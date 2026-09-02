@@ -15,6 +15,7 @@ import {
   clearDB,
 } from "./firestore";
 import { isFirebaseConfigured } from "./firebase";
+import { serializeState, syncMemoryFile } from "./lib/memory";
 
 export type Currency = "USD" | "PHP" | "EUR" | "GBP";
 
@@ -283,6 +284,17 @@ export function useStore() {
   useEffect(() => {
     if (loading) return;
     saveLocal(state);
+  }, [state, loading]);
+
+  // Keep the repo's data.txt fresh (dev only): serialize the full state and
+  // POST it to the Vite /api/memory route, which writes the file to disk.
+  useEffect(() => {
+    if (loading) return;
+    const timer = window.setTimeout(() => {
+      syncMemoryFile(serializeState(state)).catch(() => {});
+    }, 800);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, loading]);
 
   const activeProfile =

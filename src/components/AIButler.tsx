@@ -67,7 +67,7 @@ function generateAIResponse(
     const foodBudget = profile.dailyBudgetLimit * 0.3;
     const foodLeft = Math.max(0, foodBudget - foodSpent);
     return {
-      text: `You've spent ${sym}${foodSpent.toFixed(2)} on food so far today. With ${sym}${foodLeft.toFixed(2)} left in your food budget, here are some ideas:\n\n• Local deli sandwich: ~$8-12\n• Rice bowl spot: ~$10-14\n• Home cooking: ~$5-8\n\nWant me to find something specific in your area?`,
+      text: `You've spent ${sym}${foodSpent.toFixed(2)} on food so far today. With ${sym}${foodLeft.toFixed(2)} left in your food budget, here are some ideas:\n\n• Local deli sandwich: ~${sym}8-12\n• Rice bowl spot: ~${sym}10-14\n• Home cooking: ~${sym}5-8\n\nWant me to find something specific in your area?`,
       isAlert: false,
     };
   }
@@ -75,6 +75,50 @@ function generateAIResponse(
   if (q.includes("weekly") || q.includes("trend") || q.includes("week")) {
     return {
       text: `Here's your weekly snapshot:\n\n• This week: ${sym}${thisWeek.toFixed(2)}\n• Budget: ${sym}${(profile.dailyBudgetLimit * 7).toFixed(0)}\n• Daily avg: ${sym}${(thisWeek / 7).toFixed(2)}\n\n${biggestCat ? `Your top category is ${biggestCat[0]} at ${sym}${biggestCat[1].toFixed(2)}.` : ""} ${remaining < 30 ? "You're running low today!" : "You're doing well so far."}`,
+      isAlert: false,
+    };
+  }
+
+  const profileExpenses = allExpenses.filter((e) => e.profileId === profile.id);
+  const topEver = profileExpenses.reduce(
+    (best, e) => (best && best.amount >= e.amount ? best : e),
+    null as Expense | null
+  );
+  const allTimeTotal = profileExpenses.reduce((s, e) => s + e.amount, 0);
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+  const yday = profileExpenses.filter((e) => e.date === yesterdayStr);
+  const ydayTotal = yday.reduce((s, e) => s + e.amount, 0);
+
+  if (q.includes("ever") || q.includes("all time") || q.includes("all-time")) {
+    if (topEver) {
+      const isMost = q.includes("most expensive") || q.includes("biggest") || q.includes("largest") || q.includes("expensive");
+      if (isMost) {
+        return {
+          text: `Your most expensive expense ever is ${topEver.label} at ${sym}${topEver.amount.toFixed(2)} on ${topEver.date} (${topEver.category}).`,
+          isAlert: false,
+        };
+      }
+      return {
+        text: `All-time you have spent ${sym}${allTimeTotal.toFixed(2)} across ${profileExpenses.length} expense(s). Your biggest single expense was ${topEver.label} at ${sym}${topEver.amount.toFixed(2)} on ${topEver.date}.`,
+        isAlert: false,
+      };
+    }
+    return { text: "No expenses logged yet — your history is empty.", isAlert: false };
+  }
+
+  if (q.includes("yesterday")) {
+    if (ydayTotal > 0) {
+      return {
+        text: `Here's how yesterday went:\n\n• Total: ${sym}${ydayTotal.toFixed(2)} across ${yday.length} item(s)\n\n${yday
+          .map((e) => `• ${e.label}: ${sym}${e.amount.toFixed(2)} (${e.category})`)
+          .join("\n")}`,
+        isAlert: false,
+      };
+    }
+    return {
+      text: `No expenses were logged yesterday. Today you've spent ${sym}${totalSpent.toFixed(2)}.`,
       isAlert: false,
     };
   }
@@ -142,9 +186,14 @@ export default function AIButler({ messages, expenses, allExpenses, profile, cur
   const remaining = Math.max(0, profile.dailyBudgetLimit - totalSpent);
   const sym = CURRENCY_SYMBOLS[currency as Currency] || "$";
 
+  // Daily chat session: only today's messages are shown, and a fresh day starts
+  // a "new chat" with the quick prompts visible again.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayMessages = messages.filter((m) => m.date === todayStr);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingText, isTyping]);
+  }, [todayMessages, streamingText, isTyping]);
 
   const handleSend = useCallback(
     async (text?: string) => {
@@ -173,7 +222,7 @@ export default function AIButler({ messages, expenses, allExpenses, profile, cur
       setStreamError(null);
 
       // Recent conversation for lightweight multi-turn context.
-      const history: { role: "user" | "assistant"; content: string }[] = messages
+      const history: { role: "user" | "assistant"; content: string }[] = todayMessages
         .slice(-6)
         .map((m) => ({
           role: m.from === "ai" ? "assistant" : "user",
@@ -266,7 +315,7 @@ export default function AIButler({ messages, expenses, allExpenses, profile, cur
     [
       input,
       isTyping,
-      messages,
+      todayMessages,
       expenses,
       allExpenses,
       profile,
@@ -296,7 +345,7 @@ export default function AIButler({ messages, expenses, allExpenses, profile, cur
           <h3 className="text-white font-semibold text-sm">DotSpend AI</h3>
           <div className="flex items-center gap-1.5 mt-0.5">
             <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#4ADE80", boxShadow: "0 0 4px #4ADE80" }} />
-            <span className="text-[10px] text-[#A1A1AA]">Context-aware · Online</span>
+            <span className="text-[10px] text-[#A1A1AA]">Today's session · new chat daily</span>
           </div>
         </div>
       </div>
@@ -327,7 +376,7 @@ export default function AIButler({ messages, expenses, allExpenses, profile, cur
 
       {/* Messages */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 space-y-3 pb-2">
-        {messages.map((msg) => (
+        {todayMessages.map((msg) => (
           <ChatBubble key={msg.id} message={msg} />
         ))}
         {isTyping && (
@@ -365,25 +414,27 @@ export default function AIButler({ messages, expenses, allExpenses, profile, cur
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggestions */}
-      <div className="px-4 pb-3 shrink-0">
-        <div className="text-[10px] text-[#A1A1AA] mb-2 uppercase tracking-wider">Quick prompts</div>
-        <div className="flex flex-wrap gap-1.5">
-          {SUGGESTIONS.map((s, i) => (
-            <button
-              key={i}
-              onClick={() => handleSend(s.text)}
-              disabled={isTyping}
-              className="text-[11px] px-2.5 py-1.5 rounded-lg transition-all duration-150 text-left disabled:opacity-50"
-              style={{ background: `${s.accent}12`, color: s.accent, border: `1px solid ${s.accent}22` }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = `${s.accent}22`; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = `${s.accent}12`; }}
-            >
-              {s.text}
-            </button>
-          ))}
+      {/* Suggestions — only until the user starts talking (visible once per day) */}
+      {todayMessages.length === 0 && (
+        <div className="px-4 pb-3 shrink-0">
+          <div className="text-[10px] text-[#A1A1AA] mb-2 uppercase tracking-wider">Quick prompts</div>
+          <div className="flex flex-wrap gap-1.5">
+            {SUGGESTIONS.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => handleSend(s.text)}
+                disabled={isTyping}
+                className="text-[11px] px-2.5 py-1.5 rounded-lg transition-all duration-150 text-left disabled:opacity-50"
+                style={{ background: `${s.accent}12`, color: s.accent, border: `1px solid ${s.accent}22` }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = `${s.accent}22`; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = `${s.accent}12`; }}
+              >
+                {s.text}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Input */}
       <div className="p-4 shrink-0" style={{ borderTop: "1px solid #2A2A32" }}>

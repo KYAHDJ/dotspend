@@ -12,6 +12,11 @@ export interface FinancialContext {
   itemsToday: number;
   weekTotal: number;
   monthTotal: number;
+  currency: string;
+  currencySymbol: string;
+  allTimeTotal: number;
+  topExpense: { label: string; amount: number; date: string } | null;
+  recentDays: { date: string; total: number; count: number }[];
   expensesToday: Array<{ label: string; amount: number; category: string }>;
 }
 
@@ -30,19 +35,29 @@ function fmt(n: number | undefined): string {
 
 export function buildSystemPrompt(ctx?: FinancialContext): string {
   const c = ctx || ({} as FinancialContext);
+  const sym = c.currencySymbol || "$";
+  const recent = (c.recentDays || [])
+    .map((d) => `${d.date}: ${sym}${fmt(d.total)} (${d.count} item${d.count === 1 ? "" : "s"})`)
+    .join("; ");
   return [
     `You are DotSpend AI, a concise, encouraging, financial-focused personal butler app for "${c.profileName || "the user"}".`,
     "Rules:",
     "- Keep every reply SHORT (3-6 sentences unless the user explicitly asks for detail).",
     "- Only reference the real numbers provided in context below; never invent expenses or amounts.",
-    "- Always frame amounts in the user's currency and keep the same symbol consistently.",
+    `- The user's currency is ${c.currency || "unknown"} with symbol ${sym}. ALWAYS format every amount with ${sym} (never "$", never "dollar"/"peso" words unless asked).`,
     "- Be warm, supportive and practical, and always end with 1-3 concrete actionable suggestions.",
+    "- You have full memory of the user's expense history. When asked about the past (yesterday, most expensive ever, this week, etc.), answer from the history fields below.",
     "Structured financial context (today unless stated):",
     `- Daily budget: ${fmt(c.dailyBudget)}`,
     `- Spent today: ${fmt(c.spentToday)} across ${c.itemsToday || 0} expense item(s)`,
     `- Remaining today: ${fmt(Math.max(0, c.remaining || 0))}`,
     `- This week total: ${fmt(c.weekTotal)}`,
     `- This month total: ${fmt(c.monthTotal)}`,
+    `- All-time total spent: ${fmt(c.allTimeTotal)}`,
+    c.topExpense
+      ? `- Most expensive expense EVER: ${c.topExpense.label} at ${sym}${fmt(c.topExpense.amount)} on ${c.topExpense.date}`
+      : "- Most expensive expense EVER: none yet",
+    `- Recent daily totals (last 14 days): ${recent || "none"}`,
     `- Today's expenses: ${JSON.stringify(c.expensesToday || [])}`,
     "Never mention that you are an AI or that you received programmatic context.",
   ].join("\n");

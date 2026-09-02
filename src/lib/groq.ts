@@ -1,5 +1,6 @@
 import type { Expense } from "../data";
 import type { Profile } from "../store";
+import { CURRENCY_SYMBOLS } from "../store";
 
 export interface ChatHistoryItem {
   role: "user" | "assistant";
@@ -14,6 +15,11 @@ export interface GroqContext {
   itemsToday: number;
   weekTotal: number;
   monthTotal: number;
+  currency: string;
+  currencySymbol: string;
+  allTimeTotal: number;
+  topExpense: { label: string; amount: number; date: string } | null;
+  recentDays: { date: string; total: number; count: number }[];
   expensesToday: Array<{ label: string; amount: number; category: string }>;
 }
 
@@ -49,6 +55,37 @@ export function buildContext(
     .filter((e) => e.profileId === profile.id && e.date.startsWith(monthStr))
     .reduce((s, e) => s + e.amount, 0);
 
+  const mine = allExpenses.filter((e) => e.profileId === profile.id);
+  const allTimeTotal = mine.reduce((s, e) => s + e.amount, 0);
+
+  let topExpense: { label: string; amount: number; date: string } | null = null;
+  for (const e of mine) {
+    if (!topExpense || e.amount > topExpense.amount) {
+      topExpense = { label: e.label, amount: e.amount, date: e.date };
+    }
+  }
+
+  // Last 14 days, one daily summary per day so the AI can answer questions
+  // about "yesterday", "this week", or "most expensive" from memory.
+  const byDay = new Map<string, { total: number; count: number }>();
+  for (const e of mine) {
+    const cur = byDay.get(e.date) || { total: 0, count: 0 };
+    cur.total += e.amount;
+    cur.count += 1;
+    byDay.set(e.date, cur);
+  }
+  const recentDays: { date: string; total: number; count: number }[] = [];
+  const today = new Date();
+  for (let i = 13; i >= 0; i -= 1) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    const agg = byDay.get(key);
+    if (agg) recentDays.push({ date: key, total: agg.total, count: agg.count });
+  }
+
+  const currencySymbol = CURRENCY_SYMBOLS[profile.currency] || "$";
+
   return {
     profileName: profile.name,
     dailyBudget: profile.dailyBudgetLimit,
@@ -57,6 +94,11 @@ export function buildContext(
     itemsToday: expensesToday.length,
     weekTotal,
     monthTotal,
+    currency: profile.currency,
+    currencySymbol,
+    allTimeTotal,
+    topExpense,
+    recentDays,
     expensesToday: expensesToday
       .slice(-12)
       .map((e) => ({

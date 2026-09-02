@@ -2,6 +2,7 @@ import { defineConfig, loadEnv, type HtmlTagDescriptor, type Plugin } from 'vite
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
+import { writeFile } from 'node:fs/promises'
 
 import siteConfiguration from './.figma/make/site.json'
 
@@ -66,6 +67,24 @@ function groqLocalDevProxy(apiKey: string): Plugin {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const url = (req.url || '').split('?')[0]
+        if (url === '/api/memory' && req.method === 'POST') {
+          let body = ''
+          for await (const chunk of req) body += chunk
+          try {
+            // Write the full-data dump to the repo root so it can be committed
+            // to GitHub and reviewed by the AI. Dev-only route.
+            await writeFile(path.join(process.cwd(), 'data.txt'), body, 'utf-8')
+            res.statusCode = 200
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ ok: true }))
+          } catch (err) {
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Write failed' }))
+          }
+          return
+        }
+
         if (url !== '/api/chat' || req.method !== 'POST') return next()
 
         let body = ''
